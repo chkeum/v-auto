@@ -64,7 +64,35 @@ python3 vm_manager.py [PROJECT] [SPEC] [ACTION] [OPTIONS]
 
 ---
 
-## 5. 트러블슈팅 케이스 (Total Checklist)
+## 5. 고급 스케줄링 및 배치 제어 (Scheduling & Affinity)
+
+운영 환경의 복잡한 요구사항에 맞춰 VM이 기동될 노드를 정밀하게 제어할 수 있습니다.
+
+### 5-1. 다중 nodeSelector (Hard Constraint)
+여러 개의 라벨을 지정하여 **모든 조건이 일치하는 노드**에만 VM을 배치합니다.
+```yaml
+node_selector:
+  zone: "core"
+  hw-type: "high-mem"
+```
+
+### 5-2. Node Affinity (Soft/Hard Constraint)
+Kubernetes의 표준 `affinity` 문법을 그대로 사용하여 더욱 복잡한 배치 규칙을 적용할 수 있습니다. 툴은 내부적으로 이 설정을 JSON으로 변환하여 안전하게 주입합니다.
+```yaml
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution: # 가급적 이 노드에 배치
+    - weight: 1
+      preference:
+        matchExpressions:
+        - key: "disktype"
+          operator: "In"
+          values: ["ssd"]
+```
+
+---
+
+## 6. 트러블슈팅 케이스 (Total Checklist)
 
 1.  **"Resource already exists"**: `deploy` 시 `[SKIPPED]`가 뜨는 것은 정상입니다. 강제 재배포가 필요하면 먼저 `delete`를 수행하십시오.
 2.  **VM 이미지 로딩(Importing)**: 배포 직후 VM이 `Starting` 상태가 아닌 것은 `DataVolume`이 이미지를 복제 중이기 때문입니다. `status` 명령으로 `PROGRESS` 필드를 확인하십시오.

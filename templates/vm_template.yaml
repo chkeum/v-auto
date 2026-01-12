@@ -46,9 +46,18 @@ spec:
           networkName: {{ iface.nad_ref }}
         {% endif %}
       {% endfor %}
-      {% if node_selector %}
+      {% if node_selector is mapping %}
+      nodeSelector:
+        {% for k, v in node_selector.items() %}
+        {{ k }}: {{ v }}
+        {% endfor %}
+      {% elif node_selector %}
       nodeSelector:
         {{ node_selector.key }}: {{ node_selector.value }}
+      {% endif %}
+      {% if affinity %}
+      affinity:
+        {{ affinity | to_json }}
       {% endif %}
       volumes:
         - name: root-disk

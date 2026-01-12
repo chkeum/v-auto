@@ -103,4 +103,31 @@ cloud_init: |
 ```
 
 ---
+
+## Case 5. 고급 스케줄링 배치 (Node Selection & Affinity)
+
+하드웨어 특성이나 가용성 요구사항에 따라 VM의 배치 위치를 세밀하게 제어하는 예제입니다.
+
+### [specs/advanced-scheduling.yaml]
+```yaml
+name_prefix: high-perf-vm
+
+# 1. 다중 Node Selector (AND 조건: 모든 라벨이 일치해야 함)
+node_selector:
+  region: "seoul-zone-1"
+  storage: "ssd"
+  gpu: "enbaled"
+
+# 2. Node Affinity (유연한 규칙: 선호도 또는 필수 조건)
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: "rack"
+          operator: "In"
+          values: ["rack-01", "rack-02"]
+```
+
+---
 *모든 예제는 `projects/[프로젝트명]/specs/` 아래에 저장하여 즉시 실행 가능합니다.*

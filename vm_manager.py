@@ -80,7 +80,10 @@ def load_config(project_name, spec_name):
     return context
 
 def render_template(template_name, context):
+    import json
     env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
+    # Add json filter for complex objects like affinity
+    env.filters['to_json'] = lambda v: json.dumps(v)
     template = env.get_template(template_name)
     return template.render(context)
 
