@@ -16,15 +16,6 @@
 python3 -m pip download -d packages --only-binary=:all: PyYAML Jinja2
 ```
 
-### 1-2. 배포 번들링 (Aggressive Packaging)
-`bundle.sh`를 실행하여 실행 코드, 템플릿, 패키지를 포함한 최적화된 압축 파일을 생성합니다.
-*자동 제외 대상: `.git`, `venv`, `releases/`, 문서 파일(`.md`), 로그 등.*
-
-```bash
-# 실행 시 버전 태그 자동 부여 (예: v20240112)
-./bundle.sh
-```
-
 ---
 
 ## 2. 폐쇄망 내 반입 및 구성 (In-site Setup)
@@ -61,10 +52,6 @@ python3 -m venv venv
 # 별도의 venv 활성화(source) 없이 바로 실행하는 것을 권장합니다.
 ./venv/bin/python3 vm_manager.py [project] [spec] deploy
 ```
-
-### 3-2. 일상 관리 자동화 (싱크 및 릴리즈)
-- **`./sync.sh "Update Message"`**: 변경 사항을 원격 저장소와 즉시 동기화합니다.
-- **`./bundle.sh`**: 수정한 내용을 반영한 새로운 배포 번들을 생성합니다.
 
 ---
 
