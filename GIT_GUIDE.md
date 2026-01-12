@@ -59,18 +59,35 @@ git commit -m "Initial commit: VM Management System with Samsung & Example proje
 
 ---
 
-## 4. [3단계] 내 PC 세팅하기
+## 4. [3단계] 내 Windows PC 세팅하기
 
-이제 내 컴퓨터에서도 작업을 할 수 있게 준비합니다.
+윈도우 환경에서 서버와 동기화하기 위한 구체적인 절차입니다.
 
-1.  **Git 설치**: PC에 Git이 설치되어 있어야 합니다.
-2.  **코드 내려받기 (Clone)**:
-    - PC의 터미널(또는 CMD)에서 코드를 두고 싶은 폴더로 이동합니다.
+1.  **Git 설치**: 
+    - [Git for Windows](https://git-scm.com/download/win) 공식 사이트에서 설치 파일을 받아 실행합니다.
+    - 대부분 기본값(Default)으로 `Next`만 누르셔도 충분합니다.
+2.  **Git Bash 실행**: 설치 완료 후, 시작 메뉴에서 **'Git Bash'**를 검색해 실행합니다. (리눅스와 같은 터미널 환경이 열립니다.)
+3.  **사용자 설정**: 배포 서버와 동일하게 이름과 이메일을 설정합니다.
     ```bash
-    git clone https://github.com/사용자명/v-auto.git
+    git config --global user.name "사용자이름"
+    git config --global user.email "가입이메일"
+    ```
+4.  **코드 내려받기 (Clone)**:
+    - 윈도우 탐색기에서 코드를 저장할 폴더(예: `C:\Work`)를 만듭니다.
+    - 해당 폴더에서 마우스 우클릭 -> `Open Git Bash here` 클릭.
+    - 아래 명령어로 저장소 복제:
+    ```bash
+    git clone https://github.com/chkeum/v-auto.git
     cd v-auto
     ```
-3.  **VS Code 설치**: VS Code로 이 폴더를 열면 훨씬 편하게 작업할 수 있습니다.
+
+## 5. [4단계] VS Code로 스마트하게 작업하기
+
+1.  **VS Code 설치**: [Visual Studio Code](https://code.visualstudio.com/)를 설치합니다.
+2.  **폴더 열기**: `v-auto` 폴더를 VS Code로 엽니다.
+3.  **Git 도구 활용**: 
+    - 왼쪽의 **세 번째 아이콘(Source Control)**을 누르면 변경된 파일을 한눈에 볼 수 있습니다.
+    - 메시지를 적고 `Commit` 버튼 클릭 후, `Sync Changes`를 누르면 서버로 `Push` 됩니다.
 
 ---
 
