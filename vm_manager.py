@@ -412,58 +412,102 @@ def delete_action(args):
     
     context = load_config(project, spec)
     namespace = context.get('namespace', 'default')
+    base_name = context.get('name_prefix', spec)
     
-    # Choose Selector: Specific target OR entire spec set
-    if target:
-        selector = f"v-auto/project={project},v-auto/spec={spec},v-auto/name={target}"
-        print(f"Searching for specific VM '{target}' in '{namespace}'...")
-    else:
-        selector = f"v-auto/project={project},v-auto/spec={spec}"
-        print(f"Searching for all resources matching Spec '{spec}' in Project '{project}'...")
-
-    # Resources to cleanup
+    selector = f"v-auto/project={project},v-auto/spec={spec}"
+    if target: 
+        selector = f"{selector},v-auto/name={target}"
+    
     kinds = "vm,dv,secret,net-attach-def"
     
-    # 1. List targets for confirmation
-    try:
-        vms_found = run_command(['oc', 'get', 'vm', '-n', namespace, '-l', selector, '-o', 'name'])
-        if not vms_found:
-            print("No matching VMs found. Checking for orphaned resources...")
-        else:
-            print("\nThe following VMs will be removed:")
-            print(vms_found)
-    except Exception:
-        pass
+    # 1. Gather all targets
+    print(f"Gathering resources for deletion in namespace '{namespace}'...")
+    
+    # Find by labels
+    found_by_label = run_command(['oc', 'get', kinds, '-n', namespace, '-l', selector, '-o', 'name', '--ignore-not-found']).splitlines()
+    found_by_label = [r for r in found_by_label if r.strip()]
+    
+    # Find by name prefix (Legacy Fallback)
+    found_by_name = []
+    if not target:
+        all_res = run_command(['oc', 'get', 'vm,dv,secret', '-n', namespace, '-o', 'name', '--ignore-not-found']).splitlines()
+        found_by_name = [r for r in all_res if r.split('/')[-1].startswith(base_name) and r.strip()]
+        found_by_name = [r for r in found_by_name if r not in found_by_label]
 
-    if input("\nAre you sure you want to delete these and associated resources? [y/N]: ").lower() != 'y':
+    if not found_by_label and not found_by_name:
+        print(f"\n[INFO] No matching resources found for Spec '{spec}' in {namespace}.")
+        return
+
+    print("\nTHE FOLLOWING RESOURCES WILL BE PERMANENTLY DELETED:")
+    if found_by_label:
+        print(f"\n--- Managed Resources (Selector: {selector}) ---")
+        for r in found_by_label: 
+            print(f"  {r}")
+    if found_by_name:
+        print(f"\n--- Legacy/Unmanaged (Matching Prefix: {base_name}-*) ---")
+        for r in found_by_name: 
+            print(f"  {r}")
+
+    if input("\nAre you sure you want to proceed with deletion? [y/N]: ").lower() != 'y':
         print("Cancelled.")
         return
 
-    try:
-        # Delete VM, DV, Secret, NAD all at once by labels
-        cmd = ['oc', 'delete', kinds, '-n', namespace, '-l', selector, '--ignore-not-found']
-        output = run_command(cmd)
+    # 2. Execution
+    print("\nStarting deletion process...")
+    
+    # Delete labeled ones (Efficient bulk delete)
+    if found_by_label:
+        try:
+            cmd = ['oc', 'delete', kinds, '-n', namespace, '-l', selector]
+            run_command(cmd)
+            print(f"  [SUCCESS] Managed resources deleted.")
+        except Exception as e:
+            print(f"  [FAILED ] Bulk deletion: {e}")
         
-        # Parse output to show individual results
-        if output:
-            for line in output.splitlines():
-                print(f"  [DELETED] {line}")
-        
-        print(f"\n[OK] Cleanup complete for selector: {selector}")
-    except Exception as e:
-        print(f"[FAIL] Deletion failed: {e}")
+    # Delete name-based ones individually
+    if found_by_name:
+        for r in found_by_name:
+            if "/" not in r: continue
+            kind, name = r.split('/')
+            try:
+                run_command(['oc', 'delete', kind, name, '-n', namespace])
+                print(f"  [DELETED] {kind}/{name}")
+            except Exception as e:
+                print(f"  [FAILED ] {kind}/{name}: {e}")
+
+    print(f"\n[OK] Cleanup complete for Spec '{spec}'.")
 
 def list_action(args):
-    context = load_config(args.project, args.spec) 
-    # Actually 'list' probably shouldn't require 'spec'?
-    # It might just list all in project.
-    # But current arg parser expects spec? I'll make spec optional in parser if possible.
+    project = args.project
+    spec = args.spec
+    context = load_config(project, spec)
     ns = context.get('namespace', 'default')
     
-    print(f"Listing VMs in {ns}...")
-    # Table output
-    cmd = ['oc', 'get', 'vm', '-n', ns, '-o', 'wide']
-    print(run_command(cmd))
+    selector = f"v-auto/project={project},v-auto/spec={spec}"
+    kinds = "vm,dv,secret,net-attach-def"
+
+    print(f"\n[ Resource List for {project}/{spec} ]")
+    print(f"Namespace: {ns}")
+    print("=" * 60)
+    
+    # 1. Managed Resources (by labels)
+    print("\n1. Managed Resources (Labeled: v-auto/spec=%s)" % spec)
+    cmd = ['oc', 'get', kinds, '-n', ns, '-l', selector, '--ignore-not-found']
+    output = run_command(cmd)
+    if not output.strip() or "No resources found" in output:
+        print("   - No labeled resources found.")
+    else:
+        print(output)
+    
+    # 2. Broader Context (All VMs in Namespace)
+    print("\n2. All VirtualMachines in Namespace")
+    print("-" * 60)
+    vms = run_command(['oc', 'get', 'vm', '-n', ns, '-o', 'wide'])
+    if not vms.strip() or "No resources found" in vms:
+        print("   - No VMs found in namespace.")
+    else:
+        print(vms)
+    print("=" * 60 + "\n")
 
 def status_action(args):
     # Similar to list but maybe more detail
