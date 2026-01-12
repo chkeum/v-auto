@@ -1,84 +1,74 @@
-# v-auto 기술 심층 가이드 (Deep Dive Technical Manual)
+# v-auto 통합 기술 마스터 가이드 (The Definitive Guide)
 
-본 문서는 `v-auto`의 모든 작동 로직과 설정 케이스를 전수 조사하여 기술한 최종 기술 명세서입니다.
-
----
-
-## 1. 리소스 수명 주기와 라벨링 시스템 (Lifecycle & Labeling)
-
-`v-auto`는 오직 **라벨(Label)**을 기준으로 리소스를 관리합니다. 이는 이름 충돌이나 수동 삭제의 복잡함을 해결하기 위함입니다.
-
-### 1-1. 주입되는 표준 라벨
-모든 리소스(VM, DV, Secret, NAD)에는 다음 4가지 라벨이 강제 주입됩니다.
-- `v-auto/managed`: `true` (본 도구에 의해 관리됨을 표시)
-- `v-auto/project`: `[프로젝트명]` (예: `samsung`)
-- `v-auto/spec`: `[스펙명]` (예: `web`)
-- `v-auto/name`: `[VM 개별 이름]` (예: `web-01`)
-
-### 1-2. 지능형 삭제 로직 (Delete Logic)
-`delete` 명령 실행 시, 툴은 설정 파일의 `replicas` 값을 보지 않습니다. 대신 쿠버네티스 API에 다음과 같이 요청합니다.
-- **전체 삭제**: `oc delete <resources> -l v-auto/project=samsung,v-auto/spec=web`
-- **특정 삭제**: `oc delete <resources> -l v-auto/project=samsung,v-auto/spec=web,v-auto/name=web-01`
-> **Case**: 만약 사용자가 `web.yaml`에서 대수를 5개에서 1개로 줄였더라도, 이전 배포된 5개의 자원을 모두 찾아내어 안전하게 삭제합니다.
+`v-auto`는 OpenShift Virtualization 환경에서 가상 머신(VM) 배포를 자동화하는 기업용 CLI 도구입니다. 본 문서는 도구의 모든 기능과 내부 로직을 전수 공개하여, 초보자도 전문가 수준으로 도구를 활용할 수 있도록 돕습니다.
 
 ---
 
-## 2. 네트워크 구성 심층 분석 (Networking Case Study)
+## 1. CLI 명령어 및 파라미터 전수 명세
 
-`v-auto`는 두 가지 네트워크 할당 방식을 지원합니다.
+`vm_manager.py`는 위치 기반 인자(Positional)와 플래그 기반 인자(Flag)를 지능적으로 조합하여 사용합니다.
 
-### Case A: 자동 할당 (DHCP / Whereabouts)
-인프라 수준에서 IP를 관리하는 방식입니다.
-
-**설정 예시 (`config.yaml`)**:
-```yaml
-interfaces:
-  - nad_name: pod-net-dhcp
-    # ipam 설정을 넣지 않거나, 타입을 지정하지 않으면 인프라 설정을 따름
+### 1-1. 기본 명령 체계
+```bash
+python3 vm_manager.py [PROJECT] [SPEC] [ACTION] [OPTIONS]
 ```
-- **작동**: `oc apply` 시 NAD가 생성되며, VM이 부팅될 때 인프라의 DHCP 서버나 `whereabouts` IPAM으로부터 IP를 받아옵니다.
-- **Cloud-Init (가이드)**: VM 내부에서는 `dhcp4: true`로 설정해야 합니다.
 
-### Case B: 지능형 고정 IP 할당 (v-auto Static Logic)
-폐쇄망에서 IP 충돌을 방지하기 위해 툴이 직접 IP를 계산하여 주입하는 방식입니다.
+### 1-2. 핵심 액션 (Actions)
+- **`deploy`**: 리소스를 생성합니다. (VM, DataVolume, Secret, NAD)
+- **`delete`**: 리소스를 삭제합니다. (라벨 기반 지능형 삭제)
+- **`list`**: 해당 프로젝트/스펙으로 배포된 자원의 현재 상태를 표 형태로 보여줍니다.
 
-**설정 예시 (`config.yaml`)**:
-```yaml
-interfaces:
-  - nad_name: static-net
-    ipam:
-      range: "10.210.1.0/24"  # 툴이 이 대역에서 IP를 자동 계산함
-      gateway: "10.210.1.1"
-```
-- **작동 (Step-by-Step)**:
-    1.  **계산**: `replica-01`은 `.101`, `replica-02`는 `.102` 형식으로 IP를 계산합니다.
-    2.  **NAD 변환**: `whereabouts` 설정을 `static` IPAM 설정으로 강제 변환하여 NAD를 생성합니다. (`addresses: ["10.210.1.101/24"]`)
-    3.  **Cloud-Init 주입**: 계산된 IP 정보를 Cloud-Init의 `write_files` 또는 `netplan` 설정에 자동으로 변동 주입합니다.
-- **Case**: 네트워크 설정 없이 `ipam.range`만 주면, 툴이 알아서 NAD와 VM 내부 설정을 일치시켜 줍니다.
+### 1-3. 주요 스위치 (Flags)
+- **`--replicas N`**: YAML에 정의된 `replicas` 수치를 무시하고 N대만큼 배포합니다.
+- **`--target NAME`**: (`delete` 시) 특정 이름의 VM만 핀포인트로 삭제할 때 사용합니다.
+- **`--project` / `--spec`**: 위치 인자 대신 명시적으로 프로젝트와 스펙을 지정할 때 사용합니다.
 
 ---
 
-## 3. 템플릿 렌더링 로직
+## 2. 배포 과정 및 실행 결과 해설
 
-`templates/` 디렉토리의 YAML들은 단순히 고정된 파일이 아니라 **Jinja2 엔진**에 의해 처리됩니다.
+수행 시 화면에 출력되는 메시지들은 리소스의 현재 상태를 즉각적으로 보여줍니다.
 
-### 3-1. 변수 우선순위 (Variable Precedence)
-1.  **CLI 인자**: `--replicas` 등 명령 실행 시 직접 주입한 값 (최우선)
-2.  **VM Spec (`specs/*.yaml`)**: 개별 VM 정의 파일.
-3.  **Project Config (`config.yaml`)**: 프로젝트 공통 설정. (최하위)
+### 2-1. 수행 결과 플래그 의미
+| 플래그 | 의미 | 조치 방법 |
+| :--- | :--- | :--- |
+| **`[SUCCESS]`** | 리소스가 클러스터에 성공적으로 반영됨 | 다음 단계를 진행하거나 `oc get`으로 상태 확인 |
+| **`[SKIPPED]`** | 동일한 이름과 설정의 리소스가 이미 존재함 | 기존 자원을 재사용하므로 별도 조치 불필요 |
+| **`[FAILED]`** | 권한 문제나 설정 오류로 생성 실패 | 에러 메시지를 확인하여 YAML 오타나 권한 확인 |
+| **`[DELETED]`** | 해당 리소스가 원격지에서 성공적으로 제거됨 | - |
 
-### 3-2. Cloud-Init 커스터마이징
-`secret_template.yaml`은 `cloud_init_content` 변수가 있을 때만 데이터를 생성합니다. 만약 Spec YAML에 `cloud_init:` 섹션이 없다면 Secret은 빈 상태로 생성될 수 있으므로 주의하십시오.
+---
+
+## 3. 네트워크 할당 로직 (Deep Dive)
+
+`v-auto`는 네트워크 설정 방식에 따라 IP를 계산하거나 인프라에 위임합니다.
+
+### 3-1. 고정 IP 자동 계산 수식
+`config.yaml`에 `ipam.range`가 정의되어 있으면 툴은 다음 로직을 적용합니다:
+- **계산식**: `IP = Network_Address + 101 + index`
+- **결과**: `replica-01` -> `.101`, `replica-02` -> `.102` ...
+- **주입**: 계산된 값은 NAD의 `static` 주소와 Cloud-Init의 `{{ static_ip }}` 자리에 동시 주입되어 동기화를 보장합니다.
+
+### 3-2. 외부/인프라 할당 (DHCP)
+`ipam` 섹션이 없으면 `pod` 네트워크나 인프라의 DHCP 서버를 사용합니다. 이 경우 툴은 IP를 고정하지 않고 부팅 시 동적으로 받도록 둡니다.
 
 ---
 
-## 4. 트러블슈팅 매트릭스 (Total Case)
+## 4. 리소스 수명 주기 관리 (Labels)
 
-| 상황 | 원인 및 해결 방법 |
-| :--- | :--- |
-| **VM 생성 중 멈춤** | `oc get dv -n [ns]`를 확인하십시오. 이미지 크기가 크면 `Importing` 과정이 길어질 수 있습니다. |
-| **네트워크 미연결** | `oc get nad -n [ns]`를 확인하여 주입된 IP 정보와 VM 내부의 `ip a` 결과가 일치하는지 확인하십시오. |
-| **삭제 시 자원 남음** | `v-auto` 버전 2.0 미만으로 생성된 자원(라벨 없음)일 수 있습니다. 수동 삭제(`oc delete`) 후 다시 배포하십시오. |
+모든 자원은 다음 라벨을 가지고 있으며, `delete` 명령은 이 라벨들을 셀렉터로 활용합니다.
+- `v-auto/managed`: `true`
+- `v-auto/project`: [Project Name]
+- `v-auto/spec`: [Spec Name]
+- `v-auto/name`: [Instance Name]
 
 ---
-*This guide is the definitive source of truth for v-auto logic.*
+
+## 5. 트러블슈팅 케이스 (Total Checklist)
+
+1.  **"Resource already exists"**: `deploy` 시 `[SKIPPED]`가 뜨는 것은 정상입니다. 강제 재배포가 필요하면 먼저 `delete`를 수행하십시오.
+2.  **VM 이미지 로딩(Importing)**: 배포 직후 VM이 `Starting` 상태가 아닌 것은 `DataVolume`이 이미지를 복제 중이기 때문입니다. `oc get dv`로 진행률을 확인하십시오.
+3.  **권한 오류**: `oc login`이 되어 있는지, 그리고 해당 네임스페이스에 대한 쓰기 권한이나 `cluster-admin` 권한이 있는지 확인하십시오.
+
+---
+*Created for secure and reliable offline deployments.*

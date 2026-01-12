@@ -4,7 +4,7 @@
 
 ---
 
-## � Key Features
+## 🌟 Key Features
 
 - **Project-based Management**: 프로젝트와 사양(Spec) 기반의 계층적 구조로 수많은 VM을 체계적으로 관리합니다.
 - **Offline Bundle Generation**: 폐쇄망 반입을 위해 모든 Python 라이브러리와 바이너리를 포함한 단일 압축 번들을 제작합니다.
@@ -29,34 +29,38 @@ v-auto/
 
 ---
 
-## 🚀 Quick Start
+## 📖 Documentation & Guides
 
-### 1. 프로젝트 설정
-`projects/samsung/config.yaml`과 `projects/samsung/specs/web.yaml`을 성격에 맞게 작성합니다.
+도구를 처음 사용하신다면 아래 순서대로 읽어보시는 것을 권장합니다:
 
-### 2. VM 배포
-```bash
-# 기본 실행
-python3 vm_manager.py samsung web deploy
-
-# 대수 지정 배포 (3대 배포)
-python3 vm_manager.py samsung web deploy --replicas 3
-```
-
-### 3. VM 삭제 (지능형 라벨 기반)
-```bash
-# 해당 스펙으로 배포된 모든 리소스 일괄 삭제
-python3 vm_manager.py samsung web delete
-```
+1.  **[초간편 실무 예제집 (EXAMPLES.md)](EXAMPLES.md)**: 다양한 상황별 YAML 예시와 즉시 실행법. **(가장 먼저 읽으세요!)**
+2.  **[폐쇄망 반입 및 설치 가이드 (BASTION_TEST_GUIDE.md)](BASTION_TEST_GUIDE.md)**: 번들링부터 현장 설치까지의 절차.
+3.  **[기술 마스터 매뉴얼 (USER_GUIDE.md)](USER_GUIDE.md)**: CLI 옵션 전수 명세 및 기술 작동 로직 상세 분석.
 
 ---
 
-## 📖 Documentation
+## 🚀 5분 완성 퀵스타트
 
-더 상세한 정보가 필요하시면 아래 문서를 참조해 주세요.
+### 1단계: 프로젝트 준비
+```bash
+# 기본 제공되는 samsung 프로젝트 예시 확인
+ls projects/samsung/specs/web.yaml
+```
 
-- **[설치 및 폐쇄망 반입 가이드](BASTION_TEST_GUIDE.md)**: 번들링부터 현장 설치까지의 절차.
-- **[상세 설정 및 아키텍처 가이드](USER_GUIDE.md)**: YAML 작성법 및 라벨링 시스템 상세 설명.
+### 2단계: VM 배포 (Review 포함)
+```bash
+# 툴이 설정을 검토하고 대상을 보여줍니다. (y/n 확인 절차 포함)
+python3 vm_manager.py samsung web deploy
+```
+
+### 3단계: 상태 확인 및 삭제
+```bash
+# 배포된 VM 리스트 및 상태 확인
+python3 vm_manager.py samsung web list
+
+# 전체 리소스 안전하게 정리
+python3 vm_manager.py samsung web delete
+```
 
 ---
 *Developed by Core for Technical Support Excellence.*
