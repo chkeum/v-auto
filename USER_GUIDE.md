@@ -70,5 +70,14 @@ python3 vm_manager.py [PROJECT] [SPEC] [ACTION] [OPTIONS]
 2.  **VM 이미지 로딩(Importing)**: 배포 직후 VM이 `Starting` 상태가 아닌 것은 `DataVolume`이 이미지를 복제 중이기 때문입니다. `oc get dv`로 진행률을 확인하십시오.
 3.  **권한 오류**: `oc login`이 되어 있는지, 그리고 해당 네임스페이스에 대한 쓰기 권한이나 `cluster-admin` 권한이 있는지 확인하십시오.
 
+## 6. 버전 및 배포본 확인 (Version Check)
+
+`v-auto` 패키지(tar.gz) 내부에는 항당 해당 시점의 버전 정보가 담긴 `VERSION` 파일이 포함되어 있습니다.
+- **확인 방법**:
+  ```bash
+  cat VERSION  # 예: v1.1.0 또는 v20260112
+  ```
+- **생성 시점**: `git_sync.sh` 또는 `bundle.sh` 실행 시 사용자가 지정하거나 날짜 기반으로 자동 생성됩니다.
+
 ---
 *Created for secure and reliable offline deployments.*
