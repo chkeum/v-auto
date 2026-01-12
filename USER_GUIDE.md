@@ -11,95 +11,124 @@
 ### 1-1. 핵심 액션 (Core Actions)
 - **`deploy`**: 설계도(YAML)를 기반으로 인프라를 생성합니다. (이미 존재 시 `[SKIPPED]`)
 - **`delete`**: 관련 자원을 안전하게 일괄 삭제합니다. (라벨 기반 정밀 삭제)
-- **`status`**: 배포 현황, IP 주소, 디스크 복제율, 최근 **Warning 이벤트**를 통합 진단합니다.
+- **`status`**: 배포 현황, IP 주소, 디스크 복제율, PVC 상태, 최근 **Warning 이벤트**를 통합 진단합니다.
 
 ### 1-2. 주요 플래그 (Primary Flags)
 - **`--replicas N`**: YAML 설정을 무시하고 일시적으로 N대의 복제본을 배포합니다.
-- **`--target NAME`**: 특정 인스턴스(예: `web-02`)만 핀포인트로 배포/삭제/조회합니다. 이름의 번호를 읽어 IP를 자동 계산합니다.
+- **`--target NAME`**: 특정 인스턴스(예: `web-02`)만 핀포인트로 배포/삭제/조회합니다. 이름의 숫자를 읽어 IP를 자동 계산합니다.
 - **`--project` / `--spec`**: 위치 기반 인자 대신 명시적으로 지정할 때 사용합니다.
 
 ---
 
-## 2. YAML 설계 가이드 (Configuration Deep Dive)
+## 2. 계정 및 인증 설정 (Authentication)
 
-기술지원팀이 가장 중요하게 관리해야 하는 '설계도' 작성법입니다. **프로젝트 설정(`config.yaml`)**과 **개별 스펙(`spec.yaml`)**의 조합으로 완성됩니다.
+`v-auto`는 보안을 위해 패스워드를 파일에 직접 저장하지 않고, 실행 시 안전하게 주입받는 방식을 취합니다.
 
-### 2-1. 설정 상속 및 우선순위 (Inheritance Logic)
-- **Level 1 (Project Config)**: 프로젝트 전체에 공통 적용되는 기본값 (Namespace, StorageClass, Network 목록).
-- **Level 2 (Spec YAML)**: 개별 VM의 하드웨어 사양 및 소프트웨어 설정. 프로젝트 설정을 덮어쓸 수 있습니다.
-- **Level 3 (CLI Flags)**: 실행 시점에 인자로 받는 값 (Replicas 등). 최종 우선순위를 가집니다.
+### 2-1. 지능형 계정 감지 (Account Discovery)
+- **동작**: `cloud_init` 내의 `passwd: {{ password }}` 또는 사용자를 정의한 섹션을 분석하여, 실행 시 적절한 입력 프롬프트를 자동으로 띄웁니다.
+- **주입**: 입력받은 값은 `Secret` 리소스로 인코딩되어 저장되며, VM 기동 시 `cloud-init`을 통해 안전하게 주입됩니다.
 
-### 2-2. [Project] config.yaml 작성법
-프로젝트 루트(`projects/[name]/config.yaml`)에 위치하며, 하부 모든 스펙이 공유하는 자원을 정의합니다.
-
+### 2-2. YAML 정의 예시
 ```yaml
-namespace: samsung-web              # VM이 배포될 K8s 네임스페이스
-storage_class: ocs-storagecluster   # 기본 스토리지 클래스 (Ceph-RBD 등)
-
-networks:                           # 사용 가능한 네트워크 카탈로그
-  default:                          # 기본 네트워크 이름
-    bridge: br-ex                   # 실제 OCP 노드의 브리지명
-    ipam:                           # IP 관리 (선택 사항)
-      range: "10.10.10.0/24"        # 지정 시 툴이 .101부터 자동 할당
-      gateway: "10.10.10.1"
-  mgmt-net:                         # 관리용 추가 네트워크
-    bridge: br-mgmt
-    # ipam이 없으면 DHCP/External 할당으로 동작
-```
-
-### 2-3. [Spec] spec.yaml 작성법
-개별 VM의 특성을 정의합니다. (`projects/[name]/specs/[service].yaml`)
-
-```yaml
-name_prefix: web                    # 생성될 VM 이름의 시작점 (예: web-01)
-replicas: 2                         # 기본 복제본 수
-cpu: 2                              # 코어 수
-memory: 4Gi                         # 메모리 크기
-image_url: "http://.../rhel9.qcow2" # 원본 이미지 경로 (HTTP/S)
-disk_size: 40Gi                     # OS 디스크 용량
-
-networks:                           # 사용할 네트워크 선택 (카탈로그 이름)
-  - default                         # 첫 번째 NIC (eth0)
-  - mgmt-net                        # 두 번째 NIC (eth1)
-
-node_selector:                      # 특정 노드 그룹에 배치할 때
-  region: "seoul"
-
-cloud_init: |                       # 부팅 시 자동 설정 스크립트
+# spec.yaml
+auth:
+  username: admin  # 프롬프트에 표시될 기본 사용자명
+cloud_init: |
   #cloud-config
-  ssh_pwauth: True
   users:
-    - name: admin
-      passwd: {{ password }}        # 실행 시 입력받은 비밀번호 주입
+    - name: tech-support
+      passwd: {{ password }} # 실행 시 'Password for tech-support:' 프롬프트 생성
 ```
 
 ---
 
-## 3. 실무 배포 시나리오 (Operational Scenarios)
+## 3. 네트워크 설계 (Network Architecture)
 
-### Case 1. 웹 서버 클러스터 (Static IP 자동 할당)
-- **요구사항**: 3대의 웹 서버를 `10.10.10.101~103` 주소로 배포.
-- **방법**: `config.yaml`에 `ipam.range` 정의 후 `deploy` 시 `--replicas 3` 실행.
+멀티 NIC 구성과 지능형 IPAM(IP Address Management)을 지원합니다.
 
-### Case 2. 특정 인스턴스 핀포인트 복구 (Pinpoint Recovery)
-- **상황**: `web-02`만 네트워크 설정 전송 실패 등으로 재배포가 필요한 경우.
-- **방법**: 
-  ```bash
-  python3 vm_manager.py samsung web deploy --target web-02
-  ```
-- **효과**: 다른 정상 VM은 건드리지 않고 `web-02`만 다시 생성하며 IP(.102)도 그대로 유지.
+### 3-1. 프로젝트 네트워크 카탈로그 (`config.yaml`)
+하나의 프로젝트에서 사용할 수 있는 모든 네트워크 규격을 정의합니다.
 
-### Case 3. 고급 스케줄링 (Affinity)
-- **요구사항**: 가급적 `SSD` 노드에 배치하되, 반드시 특정 랙에는 배치하지 않음.
-- **설정**: Spec YAML에 `affinity` 블록 정의 (표준 K8s Affinity 문법 지원).
+```yaml
+networks:
+  default:
+    bridge: br-ex            # OCP 노드의 실제 브리지 이름
+    ipam:
+      range: "10.10.10.0/24" # 자동 할당용 대역
+      gateway: "10.10.10.1"
+  mgmt-net:
+    bridge: br-mgmt          # 관리용 폐쇄망 브리지
+    # ipam이 없으면 DHCP 또는 외부 할당으로 동작
+```
+
+### 3-2. 고정 IP 자동 계산 로직
+- **원리**: `range`가 정의된 네트워크를 사용할 때, 툴은 `IP = Network_Addr + 101 + index` 공식을 적용합니다.
+- **결과**: `web-01`(.101), `web-02`(.102) ... 처럼 순차적으로 부여되어 IP 충돌을 원천 차단합니다.
+- **동기화**: 계산된 IP는 K8s의 `NAD(NetworkAttachmentDefinition)`와 VM 내부(`cloud-init`)에 동시에 고정값으로 주입됩니다.
+
+---
+
+## 4. 스토리지 및 디스크 (Storage & Disk)
+
+`DataVolume`을 통해 원본 이미지를 복제하고 VM의 영구 저장소(PVC)를 관리합니다.
+
+### 4-1. 주요 설정 항목
+- **`storage_class`**: Ceph-RBD 등 클러스터의 영구 저장소 규격을 지정합니다.
+- **`disk_size`**: VM이 사용할 실제 디스크 공간입니다. 원본 이미지보다 커야 합니다.
+- **`scratch PVC`**: 이미지 복제 시 CDI가 임시로 사용하는 공간입니다. 완료 후 자동 삭제되며, 실패 시 `v-auto status`에서 진행률과 함께 상태를 모니터링할 수 있습니다.
 
 ---
 
-## 4. 트러블슈팅 및 관리 (Troubleshooting)
+## 5. 고급 스케줄링 (Scheduling & Affinity)
 
-1.  **[SKIPPED] 메시지**: 동일 설정의 자원이 이미 있음을 의미합니다. 변경 사항을 강제 반영하려면 `delete` 후 `deploy` 하십시오.
-2.  **IP 할당 확인**: `status` 명령을 실행하면 `ADDRESS` 열에 실제 할당된 IP가 바로 표시됩니다.
-3.  **이벤트 모니터링**: `status` 하단의 `Recent Events`는 하드웨어 오류나 이미지 로딩 실패 사유를 **Warning** 등급 위주로 친절하게 보여줍니다.
+VM이 특정 하드웨어나 위치(Rack)에 배치되도록 정교하게 제어합니다.
+
+### 5-1. 다중 nodeSelector (Hard Constraint)
+여러 라벨을 지정하여 **모든 조건이 일치**하는 노드에만 배치합니다.
+```yaml
+node_selector:
+  zone: "core"
+  hw-type: "high-mem"
+```
+
+### 5-2. Node Affinity (Complex Rules)
+Kubernetes 표준 `affinity` 문법을 지원합니다. (Preferred/Required 모두 가능)
+```yaml
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution: # 필수 조건
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: "rack"
+          operator: "In"
+          values: ["rack-01"]
+```
 
 ---
-*본 문서는 기술지원팀의 피드백을 반영하여 지속적으로 업데이트됩니다.*
+
+## 6. YAML 풀 사양 명세 (Full Spec Reference)
+
+기술지원팀이 작성하는 스펙 파일(`spec.yaml`)의 모든 사용 가능 필드입니다.
+
+| 필드명 | 설명 | 필수 여부 | 예시 |
+| :--- | :--- | :--- | :--- |
+| `name_prefix` | 생성될 VM의 이름 접두사 | **필수** | `web`, `db` |
+| `replicas` | 기본 복제본 수 | 선택 (기본 1) | `3` |
+| `cpu` / `memory` | 하드웨어 자원 사양 | **필수** | `2`, `4Gi` |
+| `image_url` | 원본 이미지 경로 (HTTP/S) | **필수** | `http://.../img.qcow2` |
+| `disk_size` | OS 디스크 용량 | **필수** | `40Gi` |
+| `networks` | 사용할 네트워크 리스트 | 선택 | `['default']` |
+| `node_selector` | 노드 라벨 선택기 (Dict) | 선택 | `{gpu: "enabled"}` |
+| `affinity` | 고급 스케줄링 규칙 (Dict) | 선택 | `nodeAffinity: ...` |
+| `cloud_init` | 부팅 시 자동 설정 스크립트 | 선택 | `#cloud-config ...` |
+
+---
+
+## 7. 트러블슈팅 케이스 (Total Checklist)
+
+- **상태 확인**: `status` 명령 시 `ADDRESS`가 안 뜬다면 `DataVolume` 복제 상태(`PROGRESS`)를 확인하십시오.
+- **이벤트 확인**: `Recent Events` 섹션의 **Warning** 메시지는 하드웨어 자원 부족이나 네트워크 브리지 미작동 사유를 즉시 알려줍니다.
+- **삭제 후 잔재**: `delete` 명령은 `scratch` PVC 등 임시 자원도 패턴 기반으로 함께 정리합니다.
+
+---
+*Created for secure and reliable offline deployments by Technical Support Team.*
