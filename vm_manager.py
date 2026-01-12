@@ -469,14 +469,48 @@ def status_action(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Multi-Project VM Manager")
-    parser.add_argument('project', help="Project name (folder in projects/)")
-    parser.add_argument('spec', help="VM Spec name (file in projects/<p>/specs/)")
-    parser.add_argument('action', choices=['deploy', 'delete', 'list', 'status'], help="Action to perform")
+    
+    # 1. Collect all positional arguments in one list
+    parser.add_argument('args_pos', nargs='*', metavar='project spec action', 
+                        help="Positional arguments: project, spec, and action")
+    
+    # 2. Define optional flags
+    parser.add_argument('--vendor', '--project', dest='project_flag', help="Project name")
+    parser.add_argument('--spec', dest='spec_flag', help="VM Spec name")
+    parser.add_argument('--action', dest='action_flag', 
+                        choices=['deploy', 'delete', 'list', 'status'], help="Action to perform")
     
     parser.add_argument('--replicas', type=int, help="Override replica count")
     parser.add_argument('--target', help="Specific target name for delete")
     
     args = parser.parse_args()
+    
+    # 3. Intelligent Resolution Logic:
+    # Flags take higher priority. Remaining positional arguments fill empty gaps.
+    project = args.project_flag
+    spec = args.spec_flag
+    action = args.action_flag
+    
+    for p in args.args_pos:
+        if not project:
+            project = p
+        elif not spec:
+            spec = p
+        elif not action and p in ['deploy', 'delete', 'list', 'status']:
+            action = p
+        elif not action: # If it's not a known choice but action is still empty
+            action = p
+
+    if not project or not spec or not action or action not in ['deploy', 'delete', 'list', 'status']:
+        parser.print_help()
+        print("\nError: project, spec, and action are all required.")
+        print("Example: python3 vm_manager.py samsung web deploy")
+        print("Example: python3 vm_manager.py --vendor samsung --spec web delete")
+        sys.exit(1)
+        
+    args.project = project
+    args.spec = spec
+    args.action = action
     
     if args.action == 'deploy':
         deploy_action(args)
