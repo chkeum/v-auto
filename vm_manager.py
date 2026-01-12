@@ -441,15 +441,17 @@ def delete_action(args):
     print("\nTHE FOLLOWING RESOURCES WILL BE PERMANENTLY DELETED:")
     if found_by_label:
         print(f"\n[ 1. Managed Resources (Selector: {selector}) ]")
-        # Use more descriptive columns for the confirmation table
-        table = run_command(['oc', 'get', kinds, '-n', namespace, '-l', selector, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.phase,P-STATUS:.status.printableStatus,READY:.status.ready'])
-        print(table)
+        # Intelligent status: Use printableStatus if available, else Phase
+        cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,PHASE:.status.phase,READY:.status.ready"
+        table = run_command(['oc', 'get', kinds, '-n', namespace, '-l', selector, '-o', f'custom-columns={cols}'])
+        clean_print_table(table, "Resources")
         
     if found_by_name:
         print(f"\n[ 2. Legacy/Unmanaged (Matching Prefix: {base_name}-*) ]")
         legacy_names = ",".join(found_by_name)
-        table = run_command(['oc', 'get', legacy_names, '-n', namespace, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.phase,P-STATUS:.status.printableStatus,READY:.status.ready', '--ignore-not-found'])
-        print(table)
+        cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,PHASE:.status.phase,READY:.status.ready"
+        table = run_command(['oc', 'get', legacy_names, '-n', namespace, '-o', f'custom-columns={cols}', '--ignore-not-found'])
+        clean_print_table(table, "Resources")
 
     if input("\nAre you sure you want to proceed with deletion? [y/N]: ").lower() != 'y':
         print("Cancelled.")
@@ -537,15 +539,33 @@ def status_action(args):
     dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={dv_cols}'])
     clean_print_table(dvs, "DataVolumes")
 
-    # 4. Recent Events (Diagnostic)
-    print("\n4. Recent Lifecycle Events (Top 5)")
+    # 4. Configuration & Network (NAD / Secret)
+    print("\n4. Network (NAD) & Config (Secret) Resources")
     print("-" * 100)
+    cfg_cols = "KIND:.kind,NAME:.metadata.name,CREATED:.metadata.creationTimestamp"
+    configs = run_command(['oc', 'get', 'net-attach-def,secret', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={cfg_cols}'])
+    clean_print_table(configs, "Config Resources")
+
+    # 5. Recent Events (Diagnostic)
+    print("\n5. Recent Lifecycle Events (Top 5)")
+    print("-" * 100)
+    # Using more detailed event output
     events_raw = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
     if events_raw.strip():
         base_name = context.get('name_prefix', spec)
-        filtered = [l for l in events_raw.splitlines() if spec in l or base_name in l][-5:]
+        # Header for events
+        lines = events_raw.splitlines()
+        print(f"{'AGE':<10} {'TYPE':<8} {'REASON':<15} {'OBJECT':<40} {'MESSAGE'}")
+        
+        filtered = [l for l in lines if spec in l or base_name in l][-5:]
         if filtered:
-            for e in filtered: print(f"  {e}")
+            for e in filtered: 
+                p = e.split()
+                if len(p) < 5: continue
+                # AGE(0), TYPE(1), REASON(2), OBJECT(3), MESSAGE(4...)
+                age, etype, reason, obj = p[0], p[1], p[2], p[3]
+                msg = " ".join(p[4:])
+                print(f"{age:<10} {etype:<8} {reason:<15} {obj:<40} {msg}")
         else:
             print("   - No specific events found for this spec recently.")
     else:
