@@ -1,111 +1,105 @@
-# v-auto 통합 기술 마스터 가이드 (The Definitive Guide)
+# v-auto 통합 기술 마스터 가이드 (Definitive Master Guide)
 
-`v-auto`는 OpenShift Virtualization 환경에서 가상 머신(VM) 배포를 자동화하는 기업용 CLI 도구입니다. 본 문서는 도구의 모든 기능과 내부 로직을 전수 공개하여, 초보자도 전문가 수준으로 도구를 활용할 수 있도록 돕습니다.
-
----
-
-## 1. CLI 명령어 및 파라미터 전수 명세
-
-`vm_manager.py`는 위치 기반 인자(Positional)와 플래그 기반 인자(Flag)를 지능적으로 조합하여 사용합니다.
-
-### 1-1. 기본 명령 체계
-```bash
-python3 vm_manager.py [PROJECT] [SPEC] [ACTION] [OPTIONS]
-```
-
-### 1-2. 핵심 액션 (Actions)
-- **`deploy`**: 리소스를 생성합니다. (VM, DataVolume, Secret, NAD)
-- **`delete`**: 리소스를 삭제합니다. (라벨 및 이름 패턴 기반 지능형 삭제)
-- **`status`**: 배포된 모든 리소스의 요약 현황부터 구동 상태, **IP 주소**, 디스크 복제 진행률, 최근 **이벤트**까지 전수 진단합니다.
-
-### 1-3. 주요 스위치 (Flags)
-- **`--replicas N`**: YAML에 정의된 `replicas` 수치를 무시하고 N대만큼 배포합니다.
-- **`--target NAME`**: (`deploy` / `delete` / `status` 시) 특정 이름의 VM만 핀포인트로 배포(복구), 삭제 또는 상태를 조회할 수 있습니다. `web-03`과 같이 지정하면 해당 번호에 맞는 IP 주소가 자동으로 계산되어 할당됩니다.
-- **`--project` / `--spec`**: 위치 인자 대신 명시적으로 프로젝트와 스펙을 지정할 때 사용합니다.
+`v-auto`는 OpenShift Virtualization 환경에서 가상 머신(VM) 및 관련 자원(Disk, Network, Secret) 배포를 자동화하는 기술지원팀 전용 마스터 도구입니다. 본 문서는 도구의 사용법부터 YAML 설계 원칙까지 모든 내용을 담고 있습니다.
 
 ---
 
-## 2. 배포 과정 및 실행 결과 해설
+## 1. CLI 명령어 및 파라미터 (CLI Reference)
 
-수행 시 화면에 출력되는 메시지들은 리소스의 현재 상태를 즉각적으로 보여줍니다.
+모든 명령은 `python3 vm_manager.py [PROJECT] [SPEC] [ACTION]` 형식을 따릅니다.
 
-### 2-1. 수행 결과 플래그 의미
-| 플래그 | 의미 | 조치 방법 |
-| :--- | :--- | :--- |
-| **`[SUCCESS]`** | 리소스가 클러스터에 성공적으로 반영됨 | 다음 단계를 진행하거나 `oc get`으로 상태 확인 |
-| **`[SKIPPED]`** | 동일한 이름과 설정의 리소스가 이미 존재함 | 기존 자원을 재사용하므로 별도 조치 불필요 |
-| **`[FAILED]`** | 권한 문제나 설정 오류로 생성 실패 | 에러 메시지를 확인하여 YAML 오타나 권한 확인 |
-| **`[DELETED]`** | 해당 리소스가 원격지에서 성공적으로 제거됨 | - |
+### 1-1. 핵심 액션 (Core Actions)
+- **`deploy`**: 설계도(YAML)를 기반으로 인프라를 생성합니다. (이미 존재 시 `[SKIPPED]`)
+- **`delete`**: 관련 자원을 안전하게 일괄 삭제합니다. (라벨 기반 정밀 삭제)
+- **`status`**: 배포 현황, IP 주소, 디스크 복제율, 최근 **Warning 이벤트**를 통합 진단합니다.
 
----
-
-## 3. 네트워크 할당 로직 (Deep Dive)
-
-`v-auto`는 네트워크 설정 방식에 따라 IP를 계산하거나 인프라에 위임합니다.
-
-### 3-1. 고정 IP 자동 계산 수식
-`config.yaml`에 `ipam.range`가 정의되어 있으면 툴은 다음 로직을 적용합니다:
-- **계산식**: `IP = Network_Address + 101 + index`
-- **결과**: `replica-01` -> `.101`, `replica-02` -> `.102` ...
-- **주입**: 계산된 값은 NAD의 `static` 주소와 Cloud-Init의 `{{ static_ip }}` 자리에 동시 주입되어 동기화를 보장합니다.
-
-### 3-2. 외부/인프라 할당 (DHCP)
-`ipam` 섹션이 없으면 `pod` 네트워크나 인프라의 DHCP 서버를 사용합니다. 이 경우 툴은 IP를 고정하지 않고 부팅 시 동적으로 받도록 둡니다.
+### 1-2. 주요 플래그 (Primary Flags)
+- **`--replicas N`**: YAML 설정을 무시하고 일시적으로 N대의 복제본을 배포합니다.
+- **`--target NAME`**: 특정 인스턴스(예: `web-02`)만 핀포인트로 배포/삭제/조회합니다. 이름의 번호를 읽어 IP를 자동 계산합니다.
+- **`--project` / `--spec`**: 위치 기반 인자 대신 명시적으로 지정할 때 사용합니다.
 
 ---
 
-## 4. 리소스 수명 주기 관리 (Labels)
+## 2. YAML 설계 가이드 (Configuration Deep Dive)
 
-모든 자원은 다음 라벨을 가지고 있으며, `delete` 명령은 이 라벨들을 셀렉터로 활용합니다.
-- `v-auto/managed`: `true`
-- `v-auto/project`: [Project Name]
-- `v-auto/spec`: [Spec Name]
-- `v-auto/name`: [Instance Name]
+기술지원팀이 가장 중요하게 관리해야 하는 '설계도' 작성법입니다. **프로젝트 설정(`config.yaml`)**과 **개별 스펙(`spec.yaml`)**의 조합으로 완성됩니다.
 
----
+### 2-1. 설정 상속 및 우선순위 (Inheritance Logic)
+- **Level 1 (Project Config)**: 프로젝트 전체에 공통 적용되는 기본값 (Namespace, StorageClass, Network 목록).
+- **Level 2 (Spec YAML)**: 개별 VM의 하드웨어 사양 및 소프트웨어 설정. 프로젝트 설정을 덮어쓸 수 있습니다.
+- **Level 3 (CLI Flags)**: 실행 시점에 인자로 받는 값 (Replicas 등). 최종 우선순위를 가집니다.
 
-## 5. 고급 스케줄링 및 배치 제어 (Scheduling & Affinity)
+### 2-2. [Project] config.yaml 작성법
+프로젝트 루트(`projects/[name]/config.yaml`)에 위치하며, 하부 모든 스펙이 공유하는 자원을 정의합니다.
 
-운영 환경의 복잡한 요구사항에 맞춰 VM이 기동될 노드를 정밀하게 제어할 수 있습니다.
-
-### 5-1. 다중 nodeSelector (Hard Constraint)
-여러 개의 라벨을 지정하여 **모든 조건이 일치하는 노드**에만 VM을 배치합니다.
 ```yaml
-node_selector:
-  zone: "core"
-  hw-type: "high-mem"
+namespace: samsung-web              # VM이 배포될 K8s 네임스페이스
+storage_class: ocs-storagecluster   # 기본 스토리지 클래스 (Ceph-RBD 등)
+
+networks:                           # 사용 가능한 네트워크 카탈로그
+  default:                          # 기본 네트워크 이름
+    bridge: br-ex                   # 실제 OCP 노드의 브리지명
+    ipam:                           # IP 관리 (선택 사항)
+      range: "10.10.10.0/24"        # 지정 시 툴이 .101부터 자동 할당
+      gateway: "10.10.10.1"
+  mgmt-net:                         # 관리용 추가 네트워크
+    bridge: br-mgmt
+    # ipam이 없으면 DHCP/External 할당으로 동작
 ```
 
-### 5-2. Node Affinity (Soft/Hard Constraint)
-Kubernetes의 표준 `affinity` 문법을 그대로 사용하여 더욱 복잡한 배치 규칙을 적용할 수 있습니다. 툴은 내부적으로 이 설정을 JSON으로 변환하여 안전하게 주입합니다.
+### 2-3. [Spec] spec.yaml 작성법
+개별 VM의 특성을 정의합니다. (`projects/[name]/specs/[service].yaml`)
+
 ```yaml
-affinity:
-  nodeAffinity:
-    preferredDuringSchedulingIgnoredDuringExecution: # 가급적 이 노드에 배치
-    - weight: 1
-      preference:
-        matchExpressions:
-        - key: "disktype"
-          operator: "In"
-          values: ["ssd"]
+name_prefix: web                    # 생성될 VM 이름의 시작점 (예: web-01)
+replicas: 2                         # 기본 복제본 수
+cpu: 2                              # 코어 수
+memory: 4Gi                         # 메모리 크기
+image_url: "http://.../rhel9.qcow2" # 원본 이미지 경로 (HTTP/S)
+disk_size: 40Gi                     # OS 디스크 용량
+
+networks:                           # 사용할 네트워크 선택 (카탈로그 이름)
+  - default                         # 첫 번째 NIC (eth0)
+  - mgmt-net                        # 두 번째 NIC (eth1)
+
+node_selector:                      # 특정 노드 그룹에 배치할 때
+  region: "seoul"
+
+cloud_init: |                       # 부팅 시 자동 설정 스크립트
+  #cloud-config
+  ssh_pwauth: True
+  users:
+    - name: admin
+      passwd: {{ password }}        # 실행 시 입력받은 비밀번호 주입
 ```
 
 ---
 
-## 6. 트러블슈팅 케이스 (Total Checklist)
+## 3. 실무 배포 시나리오 (Operational Scenarios)
 
-1.  **"Resource already exists"**: `deploy` 시 `[SKIPPED]`가 뜨는 것은 정상입니다. 강제 재배포가 필요하면 먼저 `delete`를 수행하십시오.
-2.  **VM 이미지 로딩(Importing)**: 배포 직후 VM이 `Starting` 상태가 아닌 것은 `DataVolume`이 이미지를 복제 중이기 때문입니다. `status` 명령으로 `PROGRESS` 필드를 확인하십시오.
-3.  **권한 오류**: `oc login`이 되어 있는지, 그리고 해당 네임스페이스에 대한 쓰기 권한이나 `cluster-admin` 권한이 있는지 확인하십시오.
+### Case 1. 웹 서버 클러스터 (Static IP 자동 할당)
+- **요구사항**: 3대의 웹 서버를 `10.10.10.101~103` 주소로 배포.
+- **방법**: `config.yaml`에 `ipam.range` 정의 후 `deploy` 시 `--replicas 3` 실행.
 
-## 6. 버전 및 배포본 확인 (Version Check)
-
-`v-auto` 패키지(tar.gz) 내부에는 항당 해당 시점의 버전 정보가 담긴 `VERSION` 파일이 포함되어 있습니다.
-- **확인 방법**:
+### Case 2. 특정 인스턴스 핀포인트 복구 (Pinpoint Recovery)
+- **상황**: `web-02`만 네트워크 설정 전송 실패 등으로 재배포가 필요한 경우.
+- **방법**: 
   ```bash
-  cat VERSION  # 예: v1.1.0 또는 v20260112
+  python3 vm_manager.py samsung web deploy --target web-02
   ```
-- **생성 시점**: `git_sync.sh` 또는 `bundle.sh` 실행 시 사용자가 지정하거나 날짜 기반으로 자동 생성됩니다.
+- **효과**: 다른 정상 VM은 건드리지 않고 `web-02`만 다시 생성하며 IP(.102)도 그대로 유지.
+
+### Case 3. 고급 스케줄링 (Affinity)
+- **요구사항**: 가급적 `SSD` 노드에 배치하되, 반드시 특정 랙에는 배치하지 않음.
+- **설정**: Spec YAML에 `affinity` 블록 정의 (표준 K8s Affinity 문법 지원).
 
 ---
-*Created for secure and reliable offline deployments.*
+
+## 4. 트러블슈팅 및 관리 (Troubleshooting)
+
+1.  **[SKIPPED] 메시지**: 동일 설정의 자원이 이미 있음을 의미합니다. 변경 사항을 강제 반영하려면 `delete` 후 `deploy` 하십시오.
+2.  **IP 할당 확인**: `status` 명령을 실행하면 `ADDRESS` 열에 실제 할당된 IP가 바로 표시됩니다.
+3.  **이벤트 모니터링**: `status` 하단의 `Recent Events`는 하드웨어 오류나 이미지 로딩 실패 사유를 **Warning** 등급 위주로 친절하게 보여줍니다.
+
+---
+*본 문서는 기술지원팀의 피드백을 반영하여 지속적으로 업데이트됩니다.*

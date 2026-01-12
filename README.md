@@ -33,9 +33,8 @@ v-auto/
 
 도구를 처음 사용하신다면 아래 순서대로 읽어보시는 것을 권장합니다:
 
-1.  **[초간편 실무 예제집 (EXAMPLES.md)](EXAMPLES.md)**: 다양한 상황별 YAML 예시와 즉시 실행법. **(가장 먼저 읽으세요!)**
+1.  **[기술 마스터 매뉴얼 (USER_GUIDE.md)](USER_GUIDE.md)**: **(필독)** YAML 작성법, CLI 옵션 명세, 실무 예제 및 기술 로직이 총망라된 통합 가이드.
 2.  **[폐쇄망 반입 및 설치 가이드 (BASTION_TEST_GUIDE.md)](BASTION_TEST_GUIDE.md)**: 번들링부터 현장 설치까지의 절차.
-3.  **[기술 마스터 매뉴얼 (USER_GUIDE.md)](USER_GUIDE.md)**: CLI 옵션 전수 명세 및 기술 작동 로직 상세 분석.
 
 ---
 
@@ -55,8 +54,8 @@ python3 vm_manager.py samsung web deploy
 
 ### 3단계: 상태 확인 및 삭제
 ```bash
-# 배포된 VM 리스트 및 상태 확인
-python3 vm_manager.py samsung web list
+# 배포된 VM 리스트 및 상태 확인 (IP, 이벤트 정보 포함)
+python3 vm_manager.py samsung web status
 
 # 전체 리소스 안전하게 정리
 python3 vm_manager.py samsung web delete
