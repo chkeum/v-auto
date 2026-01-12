@@ -480,6 +480,17 @@ def delete_action(args):
 
     print(f"\n[OK] Cleanup complete for Spec '{spec}'.")
 
+def clean_print_table(output, title):
+    """Prints oc output while replacing <none> with '-' for better readability."""
+    if not output.strip() or "No resources found" in output:
+        print(f"   - No {title.lower()} found.")
+        return
+    lines = output.strip().splitlines()
+    if not lines: return
+    print(lines[0])
+    for line in lines[1:]:
+        print(line.replace("<none>", "  -   "))
+
 def status_action(args):
     project = args.project
     spec = args.spec
@@ -494,49 +505,47 @@ def status_action(args):
     # 1. Virtual Machines (Managed)
     print("\n1. Managed Virtual Machines (Health & Power)")
     print("-" * 100)
-    # Using multiple status fields to ensure visibility across different OCP versions
-    vm_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready,VOL-READY:.status.volumeRequests[*].type"
+    vm_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready"
     vms = run_command(['oc', 'get', 'vm', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={vm_cols}'])
-    print(vms if vms.strip() else "   - No managed VMs found.")
+    clean_print_table(vms, "Virtual Machines")
 
-    # 2. Runtime & Networking (VMI/Pod)
+    # 2. Active Runtime & IP Addresses (VMI / Pod)
     print("\n2. Active Runtime & IP Addresses (VMI / Pod)")
     print("-" * 100)
-    # Extract IP and Phase for VMIs and Pods
-    rt_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,IP:.status.interfaces[0].ipAddress,POD-IP:.status.podIP,NODE:.spec.nodeName"
-    runtime = run_command(['oc', 'get', 'vmi,pod', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={rt_cols}'])
-    if runtime.strip():
-        # Filter: Only show virt-launcher pods if we want to reduce noise, but user asked for pods too.
-        print(runtime)
+    rt_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,VMI-IP:.status.interfaces[0].ipAddress,POD-IP:.status.podIP,NODE:.spec.nodeName"
+    runtime_raw = run_command(['oc', 'get', 'vmi,pod', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={rt_cols}'])
+    
+    if not runtime_raw.strip() or "No resources found" in runtime_raw:
+        print("   - No active runtimes found.")
     else:
-        print("   - No active runtimes (Running) found.")
+        lines = runtime_raw.strip().splitlines()
+        print(f"{'KIND':<25} {'NAME':<30} {'PHASE':<12} {'ADDRESS':<18} {'NODE'}")
+        for line in lines[1:]:
+            parts = line.split()
+            if len(parts) < 3: continue
+            kind, name, phase = parts[0], parts[1], parts[2]
+            vmi_ip = parts[3] if len(parts) > 3 else "<none>"
+            pod_ip = parts[4] if len(parts) > 4 else "<none>"
+            node = parts[5] if len(parts) > 5 else "-"
+            addr = vmi_ip if vmi_ip != "<none>" else (pod_ip if pod_ip != "<none>" else "-")
+            print(f"{kind:<25} {name:<30} {phase:<12} {addr:<18} {node}")
 
     # 3. Storage Provisioning (DataVolume)
     print("\n3. Storage & Disk Provisioning (DataVolumes)")
     print("-" * 100)
-    # Critical for tracking import progress
-    dv_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress,SC:.spec.storageClassName"
+    dv_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress"
     dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={dv_cols}'])
-    print(dvs if dvs.strip() else "   - No DataVolumes found.")
+    clean_print_table(dvs, "DataVolumes")
 
-    # 4. Configuration (NAD / Secret)
-    print("\n4. Network & Config Resources (NAD / Secret)")
+    # 4. Recent Events (Diagnostic)
+    print("\n4. Recent Lifecycle Events (Top 5)")
     print("-" * 100)
-    # These don't have traditional status, so we check existence/creation
-    cfg_cols = "KIND:.kind,NAME:.metadata.name,CREATED:.metadata.creationTimestamp"
-    configs = run_command(['oc', 'get', 'net-attach-def,secret', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={cfg_cols}'])
-    print(configs if configs.strip() else "   - No NAD or Secret found.")
-
-    # 5. Events (Diagnostic)
-    print("\n5. Recent Lifecycle Events (Top 5)")
-    print("-" * 100)
-    events = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
-    if events.strip():
-        # Match by spec name or base name
+    events_raw = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
+    if events_raw.strip():
         base_name = context.get('name_prefix', spec)
-        filtered_events = [line for line in events.splitlines() if spec in line or base_name in line][-5:]
-        if filtered_events:
-            for e in filtered_events: print(f"  {e}")
+        filtered = [l for l in events_raw.splitlines() if spec in l or base_name in l][-5:]
+        if filtered:
+            for e in filtered: print(f"  {e}")
         else:
             print("   - No specific events found for this spec recently.")
     else:
