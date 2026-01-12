@@ -103,7 +103,7 @@ chmod +x bundle.sh
 > [!NOTE]
 > **`bundle.sh`가 하는 일:**
 > 1. `packages/` 폴더 내 의존성 파일 확인.
-> 2. `venv`, `.git` 등을 제외하고 `v-auto-packaged.tar.gz` 압축 생성.
+> 2. `venv`, `.git`, `.gitignore` 등을 제외하고 `v-auto-packaged.tar.gz` 압축 생성.
 > 3. `releases/` 폴더로 이동 및 Git 스테이징.
 > 4. Git 커밋 및 원격 서버로 푸시.
 

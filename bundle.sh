@@ -20,6 +20,7 @@ tar --exclude="${REPO_NAME}/venv" \
     --exclude="${REPO_NAME}/.venv" \
     --exclude='*/__pycache__' \
     --exclude="${REPO_NAME}/.git" \
+    --exclude="${REPO_NAME}/.gitignore" \
     -cvzf "${BUNDLE_NAME}" "${REPO_NAME}/"
 
 echo "=== [3/4] 릴리즈 폴더 정리 ==="
