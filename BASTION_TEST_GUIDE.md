@@ -4,21 +4,16 @@
 
 ---
 
-## 1. 외부망 준비 과정 (Off-site Preparation)
+## 1. 배포 번들 획득 (Getting the Package)
 
-반입 전, 인터넷이 가능한 환경에서 실행에 필요한 모든 자산을 단일 번들로 준비합니다.
+인터넷이 가능한 환경에서 최신 배포본(Bundle)을 다운로드하여 Bastion 서버로 반입합니다.
 
-### 1-1. 의존성 패키지 다운로드
-`v-auto` 디렉토리 내에 `packages` 폴더를 생성하고, 타겟 시스템에 맞는 바이너리 라이브러리를 준비합니다.
-
-```bash
-# 의존성 다운로드 (컴파일이 필요 없는 .whl 파일만 추출)
-python3 -m pip download -d packages --only-binary=:all: PyYAML Jinja2
-```
+- **다운로드 경로**: `https://github.com/chkeum/v-auto/raw/main/releases/v-auto-packaged.tar.gz`
+- **반입 방법**: USB 또는 망간연동 솔루션을 통해 내부 Bastion 서버의 임의 경로(예: `/home/core/`)로 파일을 이동합니다.
 
 ---
 
-## 2. 폐쇄망 내 반입 및 구성 (In-site Setup)
+## 2. 폐쇄망 내 구성 (In-site Setup)
 
 내부 망의 Bastion 서버에 번들을 반입한 후 설치를 진행합니다.
 
@@ -40,8 +35,6 @@ python3 -m venv venv
 # 2. 오프라인 설치 (내부 packages 폴더 활용)
 ./venv/bin/python3 -m pip install --no-index --find-links=packages PyYAML Jinja2
 ```
-
----
 
 ## 3. 실행 및 검증 (Operation)
 
