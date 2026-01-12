@@ -664,21 +664,41 @@ Examples:
     spec = args.spec_flag
     action = args.action_flag
     
-    # Map positional args to missing variables
+    # Pre-scan positional args for action keywords to avoid mis-mapping
+    action_keywords = ['deploy', 'delete', 'list', 'status']
     for p in args.args_pos:
+        if p in action_keywords and not action:
+            action = p
+            break
+
+    # Map remaining positional args to missing variables
+    for p in args.args_pos:
+        if p == action: continue # Already mapped
         if not project:
             project = p
         elif not spec:
             spec = p
-        elif not action and p in ['deploy', 'delete', 'list', 'status']:
-            action = p
-        elif not action:
-            action = p
 
-    if not project or not spec or not action or action not in ['deploy', 'delete', 'list', 'status']:
-        parser.print_help()
-        print("\n[ERROR] Missing or invalid arguments.")
-        print("At least 'project', 'spec', and 'action' must be provided.")
+    # Validation & Enhanced Error Reporting
+    missing = []
+    if not project: missing.append("project (e.g. samsung)")
+    if not spec: missing.append("spec (e.g. web)")
+    if not action: missing.append("action (deploy, delete, status)")
+
+    if missing:
+        parser.print_usage()
+        print(f"\n[ERROR] Missing required arguments: {', '.join(missing)}")
+        
+        # Intelligent Hint
+        if args.target and not action:
+            print("\n[HINT] You provided '--target' but no action. Did you mean 'delete'?")
+            print(f"       Try: python3 vm_manager.py {project or '<project>'} {spec or '<spec>'} delete --target {args.target}")
+        
+        print("\nRun with '-h' for full help and examples.")
+        sys.exit(1)
+        
+    if action not in action_keywords:
+        print(f"\n[ERROR] Invalid action '{action}'. Choose from: {', '.join(action_keywords)}")
         sys.exit(1)
         
     args.project = project
