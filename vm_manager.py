@@ -125,20 +125,29 @@ def render_manifests(ctx):
     """Generates all K8s manifests for a VM instance."""
     manifests = []
     name = ctx['vm_name']
+    project = ctx.get('project_name', 'default')
+    spec = ctx.get('spec_name', 'default')
+    
+    # Standard Labels for Lifecycle Management
+    labels = {
+        'v-auto/managed': 'true',
+        'v-auto/project': project,
+        'v-auto/spec': spec,
+        'v-auto/name': name
+    }
     
     # 1. Secret (Cloud-Init)
-    # Pre-render the cloud-init configuration to substitute variables
     try:
         env = Environment()
-        # Create a copy of context to avoid polluting it with rendered CI too early if needed
-        # but here we want to render it.
         rendered_ci = env.from_string(ctx.get('cloud_init', '')).render(ctx)
         secret_context = ctx.copy()
         secret_context['cloud_init_content'] = rendered_ci
     except Exception as e:
         print(f"Error rendering cloud-init for {name}: {e}")
         sys.exit(1)
+    
     secret = yaml.safe_load(render_template('secret_template.yaml', secret_context))
+    secret.setdefault('metadata', {}).setdefault('labels', {}).update(labels)
     manifests.append(secret)
     
     # 2. NADs
@@ -157,15 +166,19 @@ def render_manifests(ctx):
             
         if 'bridge' in net:
              nad = yaml.safe_load(render_template('nad_template.yaml', nad_ctx))
-             # We assume NADs might exist, so we apply them but handle errors downstream
+             nad.setdefault('metadata', {}).setdefault('labels', {}).update(labels)
              manifests.append(nad)
              
     # 3. DataVolume
     dv = yaml.safe_load(render_template('datavolume_template.yaml', ctx))
+    dv.setdefault('metadata', {}).setdefault('labels', {}).update(labels)
     manifests.append(dv)
     
     # 4. VM
     vm = yaml.safe_load(render_template('vm_template.yaml', ctx))
+    vm.setdefault('metadata', {}).setdefault('labels', {}).update(labels)
+    # Also add labels to the template for VMI tracking
+    vm.setdefault('spec', {}).setdefault('template', {}).setdefault('metadata', {}).setdefault('labels', {}).update(labels)
     manifests.append(vm)
     
     return manifests
@@ -292,6 +305,8 @@ def deploy_action(args):
         
         instance_ctx = context.copy()
         instance_ctx['vm_name'] = vm_name
+        instance_ctx['project_name'] = project
+        instance_ctx['spec_name'] = spec
         
         # Deep copy interfaces to modify them for this specific instance
         instance_interfaces = copy.deepcopy(final_net_list)
@@ -389,66 +404,52 @@ def apply_k8s_resource(manifest, namespace, ignore_exists=False):
             # Simple check or just pass
             pass
         else:
-            print(f"[FAIL] {kind} {name}: {e}")
+        print(f"[FAIL] {kind} {name}: {e}")
 
 def delete_action(args):
     project = args.project
     spec = args.spec
-    target = args.target # Optional specific name
+    target = args.target
     
     context = load_config(project, spec)
     namespace = context.get('namespace', 'default')
-    base_name = context.get('name_prefix', spec)
     
-    # Identify what to delete
-    # If target is set, delete one.
-    # If not, delete ALL replicas roughly? Or Pattern?
-    # Safer to ask matching pattern.
+    # Choose Selector: Specific target OR entire spec set
+    if target:
+        selector = f"v-auto/project={project},v-auto/spec={spec},v-auto/name={target}"
+        print(f"Searching for specific VM '{target}' in '{namespace}'...")
+    else:
+        selector = f"v-auto/project={project},v-auto/spec={spec}"
+        print(f"Searching for all resources matching Spec '{spec}' in Project '{project}'...")
+
+    # Resources to cleanup
+    kinds = "vm,dv,secret,net-attach-def"
     
-    selector = target if target else base_name
-    print(f"Deleting resources matching '{selector}' in '{namespace}'...")
-    
-    # Interactive check
-    if input("Are you sure? [y/N]: ").lower() != 'y':
+    # 1. List targets for confirmation
+    try:
+        vms_found = run_command(['oc', 'get', 'vm', '-n', namespace, '-l', selector, '-o', 'name'])
+        if not vms_found:
+            print("No matching VMs found. Checking for orphaned resources...")
+        else:
+            print("\nThe following VMs will be removed:")
+            print(vms_found)
+    except Exception:
+        pass
+
+    if input("\nAre you sure you want to delete these and associated resources? [y/N]: ").lower() != 'y':
         print("Cancelled.")
         return
 
-    # Delete commands (VM, DV, Secret)
-    # Using 'oc delete ... -l ...' is best if we had labels.
-    # Creating 'vm_manager' label in config was a good idea.
-    # Let's assume common_labels 'managed-by: vm-manager' is applied.
-    # And maybe 'vm-role: spec-name'
-    
-    # For now, simplistic approach: match names.
-    objs = ['vm', 'dv', 'secret', 'net-attach-def']
-    
-    if target:
-        # Delete specific
-        for kind in objs:
-             run_command(['oc', 'delete', kind, target, '-n', namespace, '--ignore-not-found'])
-             run_command(['oc', 'delete', kind, f"{target}-root-disk", '-n', namespace, '--ignore-not-found'])
-             run_command(['oc', 'delete', kind, f"{target}-cloud-init", '-n', namespace, '--ignore-not-found'])
-             # Check for any NIC NADs (assuming name prefix)
-             # This is a bit brute force but matches our naming scheme
-             for i in range(4): # Check up to 4 interfaces
-                 run_command(['oc', 'delete', kind, f"{target}-net-{i}", '-n', namespace, '--ignore-not-found'])
-                 # Also check the new naming scheme: {target}-{orig_nad}
-                 # Since we don't know orig_nad here, we might need a regex or label
-                 # But oc delete -l is better.
-    else:
-        # Delete all loop? Or label?
-        # Trying to guess names is risky.
-        # But for 'replicas', names are predictable.
-        replicas = args.replicas if args.replicas else int(context.get('replicas', 1))
-        for i in range(replicas):
-            suffix = f"-{i+1:02d}" if replicas > 1 else ""
-            name = f"{base_name}{suffix}"
-            print(f"Removing {name}...")
-            run_command(['oc', 'delete', 'vm', name, '-n', namespace, '--ignore-not-found'])
-            run_command(['oc', 'delete', 'dv', f"{name}-root-disk", '-n', namespace, '--ignore-not-found'])
-            run_command(['oc', 'delete', 'secret', f"{name}-cloud-init", '-n', namespace, '--ignore-not-found'])
-            # Cleanup NADs matching our naming scheme
-            run_command(['oc', 'delete', 'net-attach-def', f"{name}-br-virt-net", '-n', namespace, '--ignore-not-found'])
+    # 2. Bulk Delete using Label Selector
+    print(f"Deleting resources with selector: {selector}...")
+    try:
+        # Delete VM, DV, Secret, NAD all at once by labels
+        cmd = ['oc', 'delete', kinds, '-n', namespace, '-l', selector, '--ignore-not-found']
+        output = run_command(cmd)
+        print(output)
+        print("\n[OK] Cleanup complete.")
+    except Exception as e:
+        print(f"[FAIL] Deletion failed: {e}")
 
 def list_action(args):
     context = load_config(args.project, args.spec) 

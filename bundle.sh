@@ -16,12 +16,28 @@ fi
 
 echo "=== [2/4] 폐쇄망용 번들 압축 (venv 등 제외) ==="
 cd ..
-tar --exclude="${REPO_NAME}/venv" \
-    --exclude="${REPO_NAME}/.venv" \
-    --exclude='*/__pycache__' \
-    --exclude="${REPO_NAME}/.git" \
-    --exclude="${REPO_NAME}/.gitignore" \
-    -cvzf "${BUNDLE_NAME}" "${REPO_NAME}/"
+# 제외할 목록 정의
+EXCLUDES=(
+    "${REPO_NAME}/venv"
+    "${REPO_NAME}/.venv"
+    "${REPO_NAME}/.git"
+    "${REPO_NAME}/.gitignore"
+    "${REPO_NAME}/releases"      # 과거 릴리즈 파일 배제 (용량 절감 핵심)
+    "${REPO_NAME}/.vscode"      # 에디터 설정 배제
+    "${REPO_NAME}/.idea"
+    "${REPO_NAME}/*.sh"         # 패키징/싱크 스크립트 배제 (Bastion 미사용)
+    "${REPO_NAME}/*.md"         # 가이드/문서 배제 (순수 코드 패키지 지향)
+    "*/__pycache__"
+    "*.DS_Store"
+)
+
+# Tar 명령어 조립
+TAR_CMD="tar"
+for item in "${EXCLUDES[@]}"; do
+    TAR_CMD+=" --exclude=\"$item\""
+done
+
+eval "$TAR_CMD -cvzf \"${BUNDLE_NAME}\" \"${REPO_NAME}/\""
 
 echo "=== [3/4] 릴리즈 폴더 정리 ==="
 cd "${REPO_NAME}"
