@@ -4,150 +4,117 @@
 
 ---
 
-## 1. CLI 명령어 및 파라미터 (CLI Reference)
+## 1. CLI 명령어 및 실행 결과 (CLI Reference & Output)
 
 모든 명령은 `python3 vm_manager.py [PROJECT] [SPEC] [ACTION]` 형식을 따릅니다.
 
 ### 1-1. 핵심 액션 (Core Actions)
-- **`deploy`**: 설계도(YAML)를 기반으로 인프라를 생성합니다. (이미 존재 시 `[SKIPPED]`)
-- **`delete`**: 관련 자원을 안전하게 일괄 삭제합니다. (라벨 기반 정밀 삭제)
-- **`status`**: 배포 현황, IP 주소, 디스크 복제율, PVC 상태, 최근 **Warning 이벤트**를 통합 진단합니다.
+- **`deploy`**: 설계도(YAML)를 기반으로 인프라를 생성합니다.
+- **`delete`**: 관련 자원을 라벨 기반으로 안전하게 일괄 삭제합니다.
+- **`status`**: 배포 현황, IP 주소, 디스크 복제율, 이벤트 등을 통합 진단합니다.
 
-### 1-2. 주요 플래그 (Primary Flags)
-- **`--replicas N`**: YAML 설정을 무시하고 일시적으로 N대의 복제본을 배포합니다.
-- **`--target NAME`**: 특정 인스턴스(예: `web-02`)만 핀포인트로 배포/삭제/조회합니다. 이름의 번호를 읽어 IP를 자동 계산합니다.
+### 1-2. CLI 실행 결과 예시 (Sample Outputs)
 
-### 1-3. 실무 CLI 실행 예시 (Usage Examples)
-```bash
-# 1. 표준 배포 (프로젝트: samsung, 스펙: web)
-python3 vm_manager.py samsung web deploy
+#### [deploy] 실행 시
+```text
+=== 배포 계획 (Dry-run) ===
+Project: samsung, Spec: web, Replicas: 2
+- VM 1: web-01 (IP: 10.10.10.101)
+- VM 2: web-02 (IP: 10.10.10.102)
 
-# 2. 특정 인스턴스 핀포인트 복구 (web-02만 다시 생성)
-python3 vm_manager.py samsung web deploy --target web-02
+Proceed? (y/n): y
 
-# 3. 배포 현황 및 리소스 정밀 진단
-python3 vm_manager.py samsung web status
+[SUCCESS] Secret: web-cloud-init-01 생성 완료
+[SUCCESS] DataVolume: web-root-disk-01 생성 완료
+[SUCCESS] VM: web-01 생성 완료
+... (이후 자동 status 요약 출력)
+```
 
-# 4. 특정 인스턴스 단독 삭제
-python3 vm_manager.py samsung web delete --target web-01
+#### [status] 실행 시
+```text
+=== v-auto Deployment Status (samsung/web) ===
 
-# 5. 전체 리소스 일괄 정리
-python3 vm_manager.py samsung web delete
+RESOURCE  NAME    PHASE    ADDRESS       PROGRESS  AGE
+VM        web-01  Running  10.10.10.101  100%      2m
+VM        web-02  Starting 10.10.10.102  45%       1m
+
+IP Address Summary:
+- web-01: 10.10.10.101 (nic0/svc-net)
+- web-02: 10.10.10.102 (nic0/svc-net)
+
+Recent Events (Warning only):
+- 2m ago: [Warning] FailedScheduling: node(s) had insufficient memory (web-02)
 ```
 
 ---
 
-## 2. 계정 및 인증 심화 가이드 (Advanced Auth)
+## 2. 지능형 계정 및 보안 메커니즘 (Intelligent Auth Chain)
 
-### 2-1. 다중 계정 생성 및 패스워드 주입
-실무에서는 관리용 계정과 서비스용 계정을 동시에 생성해야 할 때가 많습니다. `v-auto`는 복수의 변수를 감지하여 각각 입력받습니다.
+`v-auto`는 사용자의 개입을 최소화하면서도 강력한 보안을 유지하기 위해 다음 워크플로우를 따릅니다.
 
-```yaml
-# spec.yaml 예시
-cloud_init: |
-  #cloud-config
-  users:
-    - name: admin-user
-      passwd: {{ password }}      # 첫 번째 입력 (Password for admin-user)
-    - name: guest-user
-      passwd: {{ guest_password }} # 두 번째 입력 (Password for guest_password)
-      sudo: False
-```
+### 2-1. 동적 계정 감지 워크플로우
+1.  **스캔(Discovery)**: 툴이 `spec.yaml` 내 `cloud_init` 섹션을 분석하여 `{{ password }}`와 같은 변수 패턴을 자동으로 찾아냅니다.
+2.  **질의(Prompting)**: 실행 시 터미널에서 사용자에게 해당 계정의 패스워드를 묻습니다. (입력 시 보안을 위해 화면에 표시되지 않음)
+3.  **렌더링(Rendering)**: 입력된 패스워드를 템플릿의 변수 자리에 안전하게 치환합니다.
 
-### 2-2. 동적 사용자 감지 로직
-- 툴은 `{{ variable }}` 형식을 찾아내어 실행 시 사용자에게 값을 묻습니다.
-- `auth.username`을 지정하면 해당 이름이 프롬프트 가이드로 사용됩니다.
-
-### 2-3. Secret 리소스 저장 및 보안 (Secret Storage)
-입력받은 패스워드들은 다음과 같은 보안 절차를 거쳐 클러스터에 저장됩니다.
-
-1.  **동적 렌더링**: 사용자가 입력한 값들은 인스턴스별로 `cloud-init` 템플릿의 변수 자리에 즉시 치환됩니다.
-2.  **Secret 생성**: 렌더링된 전체 `cloud-config` 설정문은 **`[VM이름]-cloud-init`**이라는 이름의 K8s Secret에 Base64로 인코딩되어 저장됩니다.
-3.  **격리성 및 자동화**: 각 VM은 자신만의 전용 Secret을 참조하여 부팅되며, `delete` 명령 수행 시 해당 VM의 라벨을 추적하여 Secret 역시 자동으로 안전하게 파기됩니다.
+### 2-2. Secret 저장 및 수명 주기
+- **저장**: 렌더링된 전체 설정값은 **`[VM이름]-cloud-init`** 이름의 Kubernetes Secret에 Base64로 암호화되어 저장됩니다.
+- **연결**: 생성된 VM은 이 Secret을 기동 시점에 참조하여 운영체제 내부에 계정을 생성합니다.
+- **파기**: `delete` 명령 수행 시, 툴은 VM뿐만 아니라 해당 VM에 귀속된 Secret까지 라벨 추적을 통해 완벽하게 제거합니다.
 
 ---
 
-## 3. 네트워크 심화 설계 (Multi-NIC & IPAM)
+## 3. 네트워크 및 다중 NIC 설계 (Network & Multi-NIC)
 
-### 3-1. 다중 NIC 및 NAD 관리 (`config.yaml`)
+### 3-1. 지능형 IPAM (자동 계산)
+`config.yaml`에 `range`를 지정하면 툴이 다음과 같이 IP를 자동 할당합니다.
+- **수식**: `네트워크 주소 + 101 + 인덱스`
+- **예시**: `10.10.10.0/24` -> `web-01`(.101), `web-02`(.102)
 
-`v-auto`는 OCP에 존재하는 NAD를 단순히 참조하거나, 직접 생성/관리(Managed)할 수 있습니다.
-
+### 3-2. 다중 NIC 구성 예제
 ```yaml
-# config.yaml (카탈로그 정의)
+# config.yaml (네트워크 카탈로그)
 networks:
-  service-net:
-    bridge: br-ex            # [Managed Mode] bridge가 있으면 v-auto가 NAD를 자동생성
-    nad_name: svc-nad        # (선택) NAD 이름을 명시. 생략 시 [VM이름]-net-0 등으로 자동생성
-    ipam:
-      range: "10.10.10.0/24"
-  mgmt-net:
-    nad_name: existing-nad   # [External Mode] bridge가 없으면 외부 NAD를 참조만 함
-```
+  svc-net:  { bridge: br-ex, ipam: { range: "10.10.10.0/24" } }
+  mgmt-net: { nad_name: "existing-mgmt-nad" } # 외부 NAD 참조 모드
 
-**[spec.yaml (사용 설정)]**
-```yaml
+# spec.yaml (사용 설정)
 networks:
-  - service-net  # 첫 번째 랜카드 (eth0)
-  - mgmt-net     # 두 번째 랜카드 (eth1)
-```
-
-### 3-2. NAD 자동 명명 규칙
-- `nad_name`을 생략하면 `v-auto`는 **`[VM이름]-net-[순번]`** 형식으로 NAD를 자동 생성합니다. 이는 특정 VM 전용의 독립적인 네트워크 리소스를 안전하게 관리하기 위함입니다.
-
-### 3-3. 혼합 IP 할당 (Static + DHCP)
-- **eth0 (Static)**: `range` 설정을 통해 `.101` 등 고정 IP 할당.
-- **eth1 (DHCP)**: 카탈로그의 `ipam` 설정을 비워두면 인프라 DHCP를 사용하도록 동작.
-
----
-
-## 4. 스케줄링 및 선호도 (Scheduling & Affinity)
-
-### 4-1. 다중 `nodeSelector` (AND 조건)
-```yaml
-node_selector:
-  region: "seoul"
-  hw-type: "high-mem"
-  storage: "local-ssd" # 세 라벨이 모두 일치하는 노드에만 배치됨
-```
-
-### 4-2. 복합 Affinity (랙 단위 분산 등)
-```yaml
-affinity:
-  nodeAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      nodeSelectorTerms:
-      - matchExpressions:
-        - key: "kubernetes.io/hostname"
-          operator: "NotIn"
-          values: ["node-bad-01"] # 특정 노드 제외
+  - svc-net   # eth0
+  - mgmt-net  # eth1
 ```
 
 ---
 
-## 5. YAML 풀 사양 상세 레퍼런스 (Full YAML Spec)
+## 4. 고급 스케줄링 (Node Selector & Affinity)
 
-| 필드명 | 상세 설명 및 설정 예시 | 필수 |
+운영 환경의 제약 조건을 반영하여 VM 배치 노드를 정밀 타격합니다.
+
+- **`node_selector`**: 하드웨어 조건(GPU, SSD 등) 기반의 필수 배치.
+- **`affinity`**: 랙(Rack) 분산 배치 또는 특정 노드 기피 등 복합 규칙 적용.
+
+---
+
+## 5. YAML 풀 레퍼런스 (Full Specification)
+
+| 구분 | 필드 | 상세 설명 및 예시 |
 | :--- | :--- | :--- |
-| `name_prefix` | 생성될 VM 이름의 접두사. (예: `web` -> `web-01`) | **Yes** |
-| `replicas` | 복제본 수. (예: `3`) | No (1) |
-| `cpu` | 가상 CPU 코어 수. (예: `4`) | **Yes** |
-| `memory` | 메모리 크기. (예: `8Gi`, `512Mi`) | **Yes** |
-| `image_url` | 원본 이미지 주소. (예: `http://10.0.0.1/rhel9.qcow2`) | **Yes** |
-| `disk_size` | 할당할 디스크 용량. (예: `100Gi`) | **Yes** |
-| `storage_class` | K8s 스토리지 규격. (예: `ocs-storagecluster-ceph-rbd`) | No |
-| `networks` | 사용할 네트워크 이름 리스트. (예: `['net1', 'net2']`) | No |
-| `node_selector` | 노드 라벨 필터 (Key-Value 딕셔너리). | No |
-| `affinity` | K8s 표준 Affinity 설정 (JSON/Dict 구조). | No |
-| `cloud_init` | Cloud-Config 스크립트 본문. (예: `#cloud-config ...`) | No |
+| **기본 정보** | `name_prefix` | VM 이름의 시작점. (예: `web`) |
+| | `replicas` | 생성할 대수. (예: `5`) |
+| **자원 사양** | `cpu` / `memory` | 코어 및 메모리 크기. (예: `4`, `8Gi`) |
+| | `disk_size` | OS 디스크 용량. (예: `100Gi`) |
+| **이미지** | `image_url` | 원본 이미지 HTTP 경로. |
+| **인프라** | `storage_class` | 스토리지 규격 (Ceph-RBD 등). |
+| | `networks` | 사용할 네트워크 리스트. |
+| **기타** | `cloud_init` | 초기 설정 스크립트 본문. |
 
 ---
 
-## 6. 기술지원팀 실무 팁 (Expert Tips)
+## 6. 트러블슈팅 및 가이드 (Quick Help)
 
-1.  **IP 계산 일괄 확인**: `deploy --replicas 5`를 치고 `dry-run` 화면에서 각 인스턴스에 주입될 예상 IP(.101~.105)를 미리 확인할 수 있습니다.
-2.  **핀포인트 복구 활용**: 전체 10대 중 `db-03`만 문제가 생겼다면, 전체를 지우지 말고 `deploy --target db-03`을 사용하여 해당 번호와 IP를 그대로 살려내십시오.
-3.  **이벤트 히스토리**: `status`에서 보이는 이벤트는 최근 15줄을 보여주며, **Warning**이 발생하면 해당 노드의 리소스 부족이나 스케줄링 실패 사유를 즉시 파악할 수 있습니다.
+1.  **배포 실패**: `status` 명령의 하단 이벤트를 확인하여 '리소스 부족'이나 '노드 선택 불가' 사유를 확인하십시오.
+2.  **IP 미표시**: VM이 완전히 기동되기 전이거나 이미지가 복제 중(`PROGRESS` 확인)일 수 있습니다.
+3.  **핀포인트 복구**: 일부 VM만 문제가 생겼을 때 `--target` 플래그를 사용하여 해당 인스턴스만 정밀 재배포 하십시오.
 
 ---
-*Developed for excellence in OpenShift Virtualization delivery by Technical Support Team.*
+*Created for secure and reliable offline deployments by Technical Support Team.*
