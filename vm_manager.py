@@ -572,25 +572,35 @@ def status_action(args):
     configs = run_command(['oc', 'get', 'net-attach-def,secret', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={cfg_cols}'])
     clean_print_table(configs, "Config Resources")
 
-    # 5. Recent Events (Diagnostic)
-    print("\n5. Recent Lifecycle Events (Top 5)")
+    # 5. Recent Events (Intelligent Diagnostics)
+    print("\n5. Recent Events (Priority: Warning first, Max 15)")
     print("-" * 100)
-    # Using more detailed event output
     events_raw = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
     if events_raw.strip():
         base_name = context.get('name_prefix', spec)
-        # Header for events
         lines = events_raw.splitlines()
-        print(f"{'AGE':<10} {'TYPE':<8} {'REASON':<15} {'OBJECT':<40} {'MESSAGE'}")
         
-        filtered = [l for l in lines if spec in l or base_name in l][-5:]
-        if filtered:
-            for e in filtered: 
+        # Filter: Only events related to this spec/base_name
+        # We look for matches in the whole line to catch related pods/pvc/dv
+        relevant = [l for l in lines if spec in l or base_name in l]
+        
+        if relevant:
+            # Prioritize: Warning events go to top, then Normal
+            warnings = [l for l in relevant if "Warning" in l]
+            normals = [l for l in relevant if "Normal" in l]
+            
+            # Combine and limit to 15
+            final_list = (warnings + normals)[-15:]
+            
+            print(f"{'AGE':<10} {'TYPE':<8} {'REASON':<15} {'OBJECT':<40} {'MESSAGE'}")
+            for e in final_list:
                 p = e.split()
                 if len(p) < 5: continue
                 # AGE(0), TYPE(1), REASON(2), OBJECT(3), MESSAGE(4...)
                 age, etype, reason, obj = p[0], p[1], p[2], p[3]
                 msg = " ".join(p[4:])
+                # Truncate object name if too long to keep table aligned
+                if len(obj) > 38: obj = obj[:35] + "..."
                 print(f"{age:<10} {etype:<8} {reason:<15} {obj:<40} {msg}")
         else:
             print("   - No specific events found for this spec recently.")
