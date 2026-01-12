@@ -189,4 +189,4 @@ virtctl ssh <user>@<vm-name> -n vm-hyundai
     *   해결: `StorageClass`의 `WaitForFirstConsumer` 설정 때문일 수 있습니다. VM이 스케줄링될 때까지 기다리거나, 스토리지 용량이 부족한지 확인하십시오 (`oc get pv`).
 
 ---
-**문의**: 클라우드 기술지원팀 (support@example.com)
+
