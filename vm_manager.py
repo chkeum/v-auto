@@ -297,13 +297,33 @@ def deploy_action(args):
         print(f"  NIC {i}: Type={net_type}, NAD={nad_name}")
     print("="*50 + "\n")
     
+    # --- Targeted Deployment Logic ---
+    indices = range(replicas)
+    if args.target:
+        import re
+        # Support both name-NN and plain name
+        match = re.search(r'^(.*)-(\d+)$', args.target)
+        if match:
+            t_prefix, t_num = match.group(1), int(match.group(2))
+            if t_prefix != base_name:
+                print(f"[ERROR] Target '{args.target}' prefix mismatch. Expected '{base_name}-NN'.")
+                sys.exit(1)
+            indices = [t_num - 1]
+        else:
+            if args.target != base_name:
+                print(f"[ERROR] Target '{args.target}' mismatch. Expected '{base_name}'.")
+                sys.exit(1)
+            indices = [0]
+        print(f" [ INFO ] Targeted deployment: Only '{args.target}' will be processed.")
+
     if input("Proceed with dry-run/review? [Y/n]: ").lower() == 'n':
         print("Cancelled.")
         return
 
     # --- Replica Loop ---
-    for i in range(replicas):
-        suffix = f"-{i+1:02d}" if replicas > 1 else ""
+    for i in indices:
+        # Generate suffix: -01, -02 etc. if multiple or if index is high (targeted)
+        suffix = f"-{i+1:02d}" if (replicas > 1 or i > 0) else ""
         vm_name = f"{base_name}{suffix}"
         
         instance_ctx = context.copy()
@@ -636,6 +656,9 @@ Examples:
 
   # Deploy with specific replica count and flag-based arguments
   python3 vm_manager.py --project samsung --spec db deploy --replicas 3
+
+  # Deploy/Recover a specific VM instance only
+  python3 vm_manager.py samsung web deploy --target web-02
 
   # Delete all resources associated with a specific spec
   python3 vm_manager.py samsung web delete

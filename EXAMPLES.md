@@ -130,4 +130,19 @@ affinity:
 ```
 
 ---
+
+## Case 6. 특정 인스턴스 핀포인트 복구 (Pinpoint Recovery)
+
+운영 중 `web-02`만 손상되어 삭제한 후, 해당 번호와 IP(.102)를 그대로 유지하며 다시 배포하고 싶을 때 사용합니다. 또는 기존 범위를 벗어나 `web-04`만 단독 추가할 때도 유용합니다.
+
+### 실행 방법
+```bash
+# web-02만 콕 집어서 동일한 설정으로 복구
+python3 vm_manager.py samsung web deploy --target web-02
+
+# 기존 replicas가 2대더라도, web-04를 단독으로 추가 생성 (IP는 자동으로 .104 할당)
+python3 vm_manager.py samsung web deploy --target web-04
+```
+
+---
 *모든 예제는 `projects/[프로젝트명]/specs/` 아래에 저장하여 즉시 실행 가능합니다.*
