@@ -412,6 +412,12 @@ def deploy_action(args):
             apply_k8s_resource(m, namespace, ignore_exists=ignore)
         print(f"--> {vm_name} Deployed.")
 
+    # Show final status after all replicas are processed
+    print("\n" + "="*50)
+    print(" [ Final Status Summary ]")
+    print("="*50)
+    status_action(args)
+
 def apply_k8s_resource(manifest, namespace, ignore_exists=False):
     kind = manifest['kind']
     name = manifest['metadata']['name']
@@ -504,6 +510,12 @@ def delete_action(args):
                 print(f"  [FAILED ] {kind}/{name}: {e}")
 
     print(f"\n[OK] Cleanup complete for Spec '{spec}'.")
+    
+    # Show final status after deletion
+    print("\n" + "="*50)
+    print(" [ Final Status Summary ]")
+    print("="*50)
+    status_action(args)
 
 def clean_print_table(output, title):
     """Prints oc output while replacing <none> with '-' for better readability."""
