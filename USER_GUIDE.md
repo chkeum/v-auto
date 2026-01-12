@@ -86,16 +86,69 @@ networks:
 
 ---
 
-## 4. 고급 스케줄링 (Node Selector & Affinity)
+## 4. 스토리지 상세 설계 (Storage & DataVolume)
 
-운영 환경의 제약 조건을 반영하여 VM 배치 노드를 정밀 타격합니다.
+OpenShift Virtualization은 `DataVolume`을 통해 디스크 이미지를 관리합니다.
 
-- **`node_selector`**: 하드웨어 조건(GPU, SSD 등) 기반의 필수 배치.
-- **`affinity`**: 랙(Rack) 분산 배치 또는 특정 노드 기피 등 복합 규칙 적용.
+### 4-1. 이미지 스트리밍 및 PVC 관리
+- **DataVolume**: 외부 HTTP/S 소스에서 이미지를 가져와 PVC를 생성합니다.
+- **Status 진단**: `status` 실행 시 보이는 `PROGRESS`는 바로 이 DataVolume의 복제 진행률입니다.
+- **StorageClass 우선순위**: `spec.yaml` > `config.yaml` 순으로 적용됩니다.
+
+### 4-2. 설정 예시
+```yaml
+# spec.yaml
+storage_class: "ocs-storagecluster-ceph-rbd" # 영구 저장소 타입
+disk_size: "100Gi"                          # VM에 할당할 실제 공간
+image_url: "http://10.0.0.1/rhel9.qcow2"    # 원본 이미지 소스
+```
 
 ---
 
-## 5. YAML 풀 레퍼런스 (Full Specification)
+## 5. 고급 스케줄링 (Node Selector & Affinity)
+
+VM이 기동될 노드의 물리적 위치와 하드웨어 특성을 정밀하게 제어합니다.
+
+### 5-1. Node Selector (하드 제약)
+모든 라벨이 일치하는 노드에만 VM이 배치됩니다.
+```yaml
+node_selector:
+  region: "seoul-zone-1"
+  hw-type: "high-mem"
+  gpu: "enabled"
+```
+
+### 5-2. Node Affinity (유연한 규칙)
+표준 Kubernetes 문법을 사용하여 선호도(Soft)나 필수(Hard) 조건을 설정합니다.
+```yaml
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: "rack"
+          operator: "In"
+          values: ["rack-01", "rack-02"]
+```
+
+---
+
+## 6. 내부 템플릿 엔진 (The Template System)
+
+`v-auto`는 **Jinja2** 엔진을 사용하여 YAML 설계도를 실제 Kubernetes 리소스로 변환합니다.
+
+### 6-1. 주요 템플릿 파일
+- **`vm_template.yaml`**: CPU/Mem/Disk/Network/Affinity가 조합되는 핵심 템플릿.
+- **`datavolume_template.yaml`**: 이미지 복제 및 PVC 정의.
+- **`nad_template.yaml`**: 대역별 L2 브리지 네트워크 정의.
+- **`secret_template.yaml`**: Cloud-Init 설정 및 패스워드 주입.
+
+### 6-2. 기술지원팀을 위한 템플릿 수정 가이드
+특정 환경에서 특수한 어노테이션이나 설정을 추가해야 할 경우, `templates/` 하위의 파일들을 수정하면 배포되는 모든 VM에 즉시 반영됩니다.
+
+---
+
+## 7. YAML 풀 레퍼런스 (Full Specification)
 
 | 구분 | 필드 | 상세 설명 및 예시 |
 | :--- | :--- | :--- |
@@ -106,11 +159,13 @@ networks:
 | **이미지** | `image_url` | 원본 이미지 HTTP 경로. |
 | **인프라** | `storage_class` | 스토리지 규격 (Ceph-RBD 등). |
 | | `networks` | 사용할 네트워크 리스트. |
+| **스케줄링** | `node_selector` | 노드 물리적 위치 지정 (Dict). |
+| | `affinity` | 가용성 및 선호도 규칙 (Dict). |
 | **기타** | `cloud_init` | 초기 설정 스크립트 본문. |
 
 ---
 
-## 6. 트러블슈팅 및 가이드 (Quick Help)
+## 8. 트러블슈팅 및 가이드 (Quick Help)
 
 1.  **배포 실패**: `status` 명령의 하단 이벤트를 확인하여 '리소스 부족'이나 '노드 선택 불가' 사유를 확인하십시오.
 2.  **IP 미표시**: VM이 완전히 기동되기 전이거나 이미지가 복제 중(`PROGRESS` 확인)일 수 있습니다.
