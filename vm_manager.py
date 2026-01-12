@@ -398,13 +398,12 @@ def apply_k8s_resource(manifest, namespace, ignore_exists=False):
     
     try:
         run_command(cmd, input_data=input_str)
-        print(f"[OK] Applied {kind}: {name}")
+        print(f"  [SUCCESS] Created {kind}: {name}")
     except Exception as e:
         if ignore_exists:
-            # Simple check or just pass
-            pass
+            print(f"  [SKIPPED] {kind} {name} already exists.")
         else:
-        print(f"[FAIL] {kind} {name}: {e}")
+            print(f"  [FAILED ] {kind} {name}: {e}")
 
 def delete_action(args):
     project = args.project
@@ -440,14 +439,17 @@ def delete_action(args):
         print("Cancelled.")
         return
 
-    # 2. Bulk Delete using Label Selector
-    print(f"Deleting resources with selector: {selector}...")
     try:
         # Delete VM, DV, Secret, NAD all at once by labels
         cmd = ['oc', 'delete', kinds, '-n', namespace, '-l', selector, '--ignore-not-found']
         output = run_command(cmd)
-        print(output)
-        print("\n[OK] Cleanup complete.")
+        
+        # Parse output to show individual results
+        if output:
+            for line in output.splitlines():
+                print(f"  [DELETED] {line}")
+        
+        print(f"\n[OK] Cleanup complete for selector: {selector}")
     except Exception as e:
         print(f"[FAIL] Deletion failed: {e}")
 
@@ -469,29 +471,56 @@ def status_action(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Multi-Project VM Manager")
+    parser = argparse.ArgumentParser(
+        description="v-auto: High-Level OpenShift Virtualization Manager",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Deploy a specific spec for a project
+  python3 vm_manager.py samsung web deploy
+
+  # Deploy with specific replica count and flag-based arguments
+  python3 vm_manager.py --project samsung --spec db deploy --replicas 3
+
+  # Delete all resources associated with a specific spec
+  python3 vm_manager.py samsung web delete
+
+  # Delete a specific VM instance only
+  python3 vm_manager.py samsung web delete --target web-01
+
+  # List current VMs and their status
+  python3 vm_manager.py samsung web list
+"""
+    )
     
-    # 1. Collect all positional arguments in one list
+    # 1. Positional Arguments
     parser.add_argument('args_pos', nargs='*', metavar='project spec action', 
-                        help="Positional arguments: project, spec, and action")
+                        help="Positional arguments: [project] (e.g. samsung), [spec] (e.g. web), [action] (deploy|delete|list)")
     
-    # 2. Define optional flags
-    parser.add_argument('--vendor', '--project', dest='project_flag', help="Project name")
-    parser.add_argument('--spec', dest='spec_flag', help="VM Spec name")
-    parser.add_argument('--action', dest='action_flag', 
-                        choices=['deploy', 'delete', 'list', 'status'], help="Action to perform")
+    # 2. Flag-based Arguments (Highest Priority)
+    group = parser.add_argument_group('Target Selection')
+    group.add_argument('--vendor', '--project', dest='project_flag', 
+                        help="Target project directory name in 'projects/'")
+    group.add_argument('--spec', dest='spec_flag', 
+                        help="VM specification file name in 'projects/[project]/specs/' (without .yaml)")
+    group.add_argument('--action', dest='action_flag', 
+                        choices=['deploy', 'delete', 'list', 'status'], 
+                        help="Lifecycle action: 'deploy' (create), 'delete' (cleanup), 'list' (show status)")
     
-    parser.add_argument('--replicas', type=int, help="Override replica count")
-    parser.add_argument('--target', help="Specific target name for delete")
+    group_opt = parser.add_argument_group('Optional Overrides')
+    group_opt.add_argument('--replicas', type=int, 
+                           help="Override the default replica count defined in the spec YAML")
+    group_opt.add_argument('--target', 
+                           help="Specific VM instance name for granular deletion (e.g. web-02)")
     
     args = parser.parse_args()
     
     # 3. Intelligent Resolution Logic:
-    # Flags take higher priority. Remaining positional arguments fill empty gaps.
     project = args.project_flag
     spec = args.spec_flag
     action = args.action_flag
     
+    # Map positional args to missing variables
     for p in args.args_pos:
         if not project:
             project = p
@@ -499,14 +528,13 @@ def main():
             spec = p
         elif not action and p in ['deploy', 'delete', 'list', 'status']:
             action = p
-        elif not action: # If it's not a known choice but action is still empty
+        elif not action:
             action = p
 
     if not project or not spec or not action or action not in ['deploy', 'delete', 'list', 'status']:
         parser.print_help()
-        print("\nError: project, spec, and action are all required.")
-        print("Example: python3 vm_manager.py samsung web deploy")
-        print("Example: python3 vm_manager.py --vendor samsung --spec web delete")
+        print("\n[ERROR] Missing or invalid arguments.")
+        print("At least 'project', 'spec', and 'action' must be provided.")
         sys.exit(1)
         
     args.project = project
