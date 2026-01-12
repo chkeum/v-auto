@@ -441,14 +441,14 @@ def delete_action(args):
     print("\nTHE FOLLOWING RESOURCES WILL BE PERMANENTLY DELETED:")
     if found_by_label:
         print(f"\n[ 1. Managed Resources (Selector: {selector}) ]")
-        table = run_command(['oc', 'get', kinds, '-n', namespace, '-l', selector, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready'])
+        # Use more descriptive columns for the confirmation table
+        table = run_command(['oc', 'get', kinds, '-n', namespace, '-l', selector, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.phase,P-STATUS:.status.printableStatus,READY:.status.ready'])
         print(table)
         
     if found_by_name:
         print(f"\n[ 2. Legacy/Unmanaged (Matching Prefix: {base_name}-*) ]")
-        # For legacy, we might need a slightly different command since they don't have the label selector
         legacy_names = ",".join(found_by_name)
-        table = run_command(['oc', 'get', legacy_names, '-n', namespace, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready', '--ignore-not-found'])
+        table = run_command(['oc', 'get', legacy_names, '-n', namespace, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.phase,P-STATUS:.status.printableStatus,READY:.status.ready', '--ignore-not-found'])
         print(table)
 
     if input("\nAre you sure you want to proceed with deletion? [y/N]: ").lower() != 'y':
@@ -480,27 +480,6 @@ def delete_action(args):
 
     print(f"\n[OK] Cleanup complete for Spec '{spec}'.")
 
-def list_action(args):
-    project = args.project
-    spec = args.spec
-    context = load_config(project, spec)
-    ns = context.get('namespace', 'default')
-    selector = f"v-auto/project={project},v-auto/spec={spec}"
-    
-    print(f"\n[ Summary List: {project}/{spec} ]")
-    print(f"Namespace: {ns} | Selector: {selector}")
-    print("-" * 70)
-    
-    # Simple table of all managed resource names/kinds
-    managed = run_command(['oc', 'get', 'all,dv,secret,net-attach-def', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready'])
-    if not managed.strip() or "No resources found" in managed:
-        print("   - No managed resources found.")
-    else:
-        print(managed)
-    
-    print("\n* Use 'status' command for detailed VM health and IP information.")
-    print("-" * 70 + "\n")
-
 def status_action(args):
     project = args.project
     spec = args.spec
@@ -510,42 +489,64 @@ def status_action(args):
 
     print(f"\n[ Detailed Status Diagnostic: {project}/{spec} ]")
     print(f"Target Namespace: {ns}")
-    print("=" * 70)
+    print("=" * 100)
 
-    # 1. VM/VMI Detailed Status
-    print("\n1. VM Instance Health & Networking")
-    print("-" * 70)
-    # Get VM and VMI details
-    vms = run_command(['oc', 'get', 'vm', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready,VOLUME_READY:.status.volumeRequests[*].type'])
-    print(vms if vms.strip() else "   - No VMs found.")
+    # 1. Virtual Machines (Managed)
+    print("\n1. Managed Virtual Machines (Health & Power)")
+    print("-" * 100)
+    # Using multiple status fields to ensure visibility across different OCP versions
+    vm_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready,VOL-READY:.status.volumeRequests[*].type"
+    vms = run_command(['oc', 'get', 'vm', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={vm_cols}'])
+    print(vms if vms.strip() else "   - No managed VMs found.")
 
-    # Show active VMIs (for IP info)
-    print("\n2. Active Runtime (VMI) & IPs")
-    print("-" * 70)
-    vmis = run_command(['oc', 'get', 'vmi', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=NAME:.metadata.name,PHASE:.status.phase,IP:.status.interfaces[0].ipAddress,NODE:.status.nodeName'])
-    print(vmis if vmis.strip() else "   - No active VM instances (Running) found.")
+    # 2. Runtime & Networking (VMI/Pod)
+    print("\n2. Active Runtime & IP Addresses (VMI / Pod)")
+    print("-" * 100)
+    # Extract IP and Phase for VMIs and Pods
+    rt_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,IP:.status.interfaces[0].ipAddress,POD-IP:.status.podIP,NODE:.spec.nodeName"
+    runtime = run_command(['oc', 'get', 'vmi,pod', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={rt_cols}'])
+    if runtime.strip():
+        # Filter: Only show virt-launcher pods if we want to reduce noise, but user asked for pods too.
+        print(runtime)
+    else:
+        print("   - No active runtimes (Running) found.")
 
-    # 3. Storage (DataVolume) Progress
+    # 3. Storage Provisioning (DataVolume)
     print("\n3. Storage & Disk Provisioning (DataVolumes)")
-    print("-" * 70)
-    dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress,STORAGE_CLASS:.spec.storageClassName'])
+    print("-" * 100)
+    # Critical for tracking import progress
+    dv_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress,SC:.spec.storageClassName"
+    dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={dv_cols}'])
     print(dvs if dvs.strip() else "   - No DataVolumes found.")
 
-    # 4. Recent Events (Top 5)
-    print("\n4. Recent Lifecycle Events (Top 5)")
-    print("-" * 70)
+    # 4. Configuration (NAD / Secret)
+    print("\n4. Network & Config Resources (NAD / Secret)")
+    print("-" * 100)
+    # These don't have traditional status, so we check existence/creation
+    cfg_cols = "KIND:.kind,NAME:.metadata.name,CREATED:.metadata.creationTimestamp"
+    configs = run_command(['oc', 'get', 'net-attach-def,secret', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={cfg_cols}'])
+    print(configs if configs.strip() else "   - No NAD or Secret found.")
+
+    # 5. Events (Diagnostic)
+    print("\n5. Recent Lifecycle Events (Top 5)")
+    print("-" * 100)
     events = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
     if events.strip():
-        # Filter for our resources (crude grep)
-        filtered_events = [line for line in events.splitlines() if spec in line or project in line][-5:]
+        # Match by spec name or base name
+        base_name = context.get('name_prefix', spec)
+        filtered_events = [line for line in events.splitlines() if spec in line or base_name in line][-5:]
         if filtered_events:
             for e in filtered_events: print(f"  {e}")
         else:
-            print("   - No specific events for this spec recently.")
+            print("   - No specific events found for this spec recently.")
     else:
         print("   - No events found in namespace.")
     
-    print("\n" + "=" * 70 + "\n")
+    print("\n" + "=" * 100 + "\n")
+
+# Aliasing list to status for backward compatibility, though user suggested status only.
+def list_action(args):
+    status_action(args)
 
 
 def main():

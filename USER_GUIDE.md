@@ -16,8 +16,7 @@ python3 vm_manager.py [PROJECT] [SPEC] [ACTION] [OPTIONS]
 ### 1-2. 핵심 액션 (Actions)
 - **`deploy`**: 리소스를 생성합니다. (VM, DataVolume, Secret, NAD)
 - **`delete`**: 리소스를 삭제합니다. (라벨 및 이름 패턴 기반 지능형 삭제)
-- **`list`**: 해당 프로젝트/스펙으로 관리되는 모든 리소스의 종류와 이름을 간단히 **요약(Summary)**해서 보여줍니다.
-- **`status`**: 특정 VM의 현재 구동 상태, 할당된 **IP 주소**, 디스크 복제 진행률, 최근 발생한 **기술적 이벤트** 등을 상세히 **진단(Diagnostic)**합니다.
+- **`status`**: 배포된 모든 리소스의 요약 현황부터 구동 상태, **IP 주소**, 디스크 복제 진행률, 최근 **이벤트**까지 전수 진단합니다.
 
 ### 1-3. 주요 스위치 (Flags)
 - **`--replicas N`**: YAML에 정의된 `replicas` 수치를 무시하고 N대만큼 배포합니다.
@@ -68,7 +67,7 @@ python3 vm_manager.py [PROJECT] [SPEC] [ACTION] [OPTIONS]
 ## 5. 트러블슈팅 케이스 (Total Checklist)
 
 1.  **"Resource already exists"**: `deploy` 시 `[SKIPPED]`가 뜨는 것은 정상입니다. 강제 재배포가 필요하면 먼저 `delete`를 수행하십시오.
-2.  **VM 이미지 로딩(Importing)**: 배포 직후 VM이 `Starting` 상태가 아닌 것은 `DataVolume`이 이미지를 복제 중이기 때문입니다. `oc get dv`로 진행률을 확인하십시오.
+2.  **VM 이미지 로딩(Importing)**: 배포 직후 VM이 `Starting` 상태가 아닌 것은 `DataVolume`이 이미지를 복제 중이기 때문입니다. `status` 명령으로 `PROGRESS` 필드를 확인하십시오.
 3.  **권한 오류**: `oc login`이 되어 있는지, 그리고 해당 네임스페이스에 대한 쓰기 권한이나 `cluster-admin` 권한이 있는지 확인하십시오.
 
 ## 6. 버전 및 배포본 확인 (Version Check)
