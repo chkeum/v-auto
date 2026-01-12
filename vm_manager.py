@@ -418,7 +418,7 @@ def delete_action(args):
     if target: 
         selector = f"{selector},v-auto/name={target}"
     
-    kinds = "vm,dv,secret,net-attach-def"
+    kinds = "vm,dv,pvc,secret,net-attach-def"
     
     # 1. Gather all targets
     print(f"Gathering resources for deletion in namespace '{namespace}'...")
@@ -430,7 +430,7 @@ def delete_action(args):
     # Find by name prefix (Legacy Fallback)
     found_by_name = []
     if not target:
-        all_res = run_command(['oc', 'get', 'vm,dv,secret', '-n', namespace, '-o', 'name', '--ignore-not-found']).splitlines()
+        all_res = run_command(['oc', 'get', 'vm,dv,pvc,secret', '-n', namespace, '-o', 'name', '--ignore-not-found']).splitlines()
         found_by_name = [r for r in all_res if r.split('/')[-1].startswith(base_name) and r.strip()]
         found_by_name = [r for r in found_by_name if r not in found_by_label]
 
@@ -532,12 +532,38 @@ def status_action(args):
             addr = vmi_ip if vmi_ip != "<none>" else (pod_ip if pod_ip != "<none>" else "-")
             print(f"{kind:<25} {name:<30} {phase:<12} {addr:<18} {node}")
 
-    # 3. Storage Provisioning (DataVolume)
-    print("\n3. Storage & Disk Provisioning (DataVolumes)")
+    # 3. Storage Provisioning (DataVolume & PVC)
+    print("\n3. Storage & Disk Provisioning (DataVolumes / PVC)")
     print("-" * 100)
+    # DataVolume Status
     dv_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress"
     dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={dv_cols}'])
     clean_print_table(dvs, "DataVolumes")
+    
+    print("-" * 30)
+    # PVC Status (Physical allocation)
+    pvc_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.phase,CAPACITY:.status.capacity.storage,ACCESS-MODES:.spec.accessModes"
+    # Search by label first
+    pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={pvc_cols}'])
+    
+    # If no labeled PVCs, try name prefix fallback (as DVs might not propagate labels to PVCs in old CDI)
+    if not pvcs.strip() or "No resources found" in pvcs:
+        base_name = context.get('name_prefix', spec)
+        # We fetch all PVCs and filter by name
+        all_pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-o', f'custom-columns={pvc_cols}', '--ignore-not-found'])
+        if all_pvcs.strip() and "No resources found" not in all_pvcs:
+            lines = all_pvcs.splitlines()
+            header = lines[0]
+            matched = [l for l in lines[1:] if l.split()[1].startswith(base_name)]
+            if matched:
+                print(header)
+                for m in matched: print(m.replace("<none>", "  -   "))
+            else:
+                print("   - No matching PVCs found.")
+        else:
+            print("   - No PVCs found.")
+    else:
+        clean_print_table(pvcs, "PVCs")
 
     # 4. Configuration & Network (NAD / Secret)
     print("\n4. Network (NAD) & Config (Secret) Resources")
