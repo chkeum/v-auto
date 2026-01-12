@@ -1,0 +1,47 @@
+# ==========================================
+# [프로젝트 설정 파일 예시]
+# 이 파일은 해당 프로젝트(예: example-guide)의
+# 공통 설정(네트워크, 인증 등)을 정의합니다.
+# ==========================================
+
+# 1. 네임스페이스 (Namespace)
+# 이 프로젝트의 VM들이 생성될 쿠버네티스 네임스페이스입니다.
+namespace: example-guide
+
+
+# 3. 네트워크 카탈로그 (Network Catalog)
+# 자주 사용하는 네트워크 설정을 '이름'으로 미리 정의해둡니다.
+# VM Spec 파일에서는 이 '이름'만 골라서 사용하면 됩니다.
+networks:
+  # (1) 기본 네트워크 (이름: default)
+  # VM Spec에서 네트워크를 지정하지 않으면 이 설정이 사용됩니다.
+  pod-net:
+    type: pod               # K8s Pod 기본 네트워크 (Masquerade)
+  default:
+    bridge: br-virt           # 호스트의 브리지 인터페이스 이름
+    nad_name: br-virt-net     # 생성될 NetworkAttachmentDefinition 이름
+    ipam:                     # IP 할당 방식
+      type: whereabouts       # whereabouts: IP 자동 관리 플러그인
+      range: 10.215.100.0/24  # 할당할 IP 대역
+      gateway: 10.215.100.1   # 게이트웨이 주소
+
+  # (2) DMZ 네트워크 (이름: dmz-net)
+  # 외부망 연결용 예시
+  dmz-net:
+    bridge: br-dmz
+    nad_name: br-dmz-net
+    ipam:
+      type: dhcp              # DHCP: 공유기에서 IP를 받아오는 방식
+
+  # (3) 내부망 (이름: internal-net)
+  internal-net:
+    bridge: br-int
+    nad_name: br-int-net
+    ipam:
+      type: static            # Static: 수동 할당 (cloud-init에서 설정 필요)
+
+# 4. 공통 라벨 (Common Labels)
+# 이 프로젝트의 모든 리소스에 붙을 태그입니다.
+common_labels:
+  environment: test
+  managed-by: vm-manager

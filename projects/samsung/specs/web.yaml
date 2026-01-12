@@ -1,0 +1,52 @@
+name_prefix: web
+replicas: 1
+#cpu: 2
+# memory: 2Gi
+image_url: "http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2"
+
+networks:
+  - pod-net
+  - default
+
+cloud_init: |
+  #cloud-config
+  ssh_pwauth: True
+  chpasswd:
+    list: |
+      samsung-admin:{{ password }}
+      dev-user:{{ dev_password }}
+    expire: False
+  users:
+    - name: samsung-admin
+      ssh_authorized_keys:
+        - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDEvFiws1NEVfzAShpTwpB1VxiLEiGQ7rLB3kNor2alwUFnTjOb9zQkbqVxCNmWbde4XzkfJqs5n3wIrzukOKomqbBJ1vFMej6I0CJj6JHc3a1WNG4RGs8sWZG/RbcH1Qsp5Rwzj38gppuARlonHZnVyfBsIdJSYtTmEmeO/szLK1K+vSsO8kzkveV7lXEEI3kXOUpK3X0SJS5dPK0lPCedvlFVGPjQvlA8n4g1OFhSOe/tprx47Rl/E0/oeZte5LUZkJkru9AMW9l2MGv2mgV8/xZCwoL1QVACMBC14VkS/Ac3blICMTD39MilQ3d8YLFaYusom5xyikY/65oT1YSKKYPSfxj5nNdhYsoFVAtjcCLYI6KJGhwroKND0l7ThxmF6lNCBUtkJnTrMczk0nSnFEGj/+3RCFRRHWoyauMGQeArNrYjSgS5SYMszsPPOuYLsH79aRsmXf2cJ3E1sS21d5BR5NbO57lENB3b02EuIeZ4znPXhvKUBqNOlljd6oc= core@bastion.chk-ocp.skt.local
+      groups: [wheel]
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+    
+    - name: dev-user
+      groups: [wheel]
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+
+  write_files:
+    - path: /etc/netplan/02-static.yaml
+      content: |
+        network:
+          version: 2
+          ethernets:
+            {{ interface_name }}:
+              dhcp4: no
+              addresses: [{{ static_ip }}]
+              nameservers:
+                addresses: [8.8.8.8]
+
+  runcmd:
+    - echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf
+    - systemctl restart ssh
+    - netplan apply
+
+
+# 4. 디스크 설정 (Disk)
+disk_size: 10Gi
+storage_class: local-sc-test # (선택) 스토리지 클래스 지정

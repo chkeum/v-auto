@@ -1,0 +1,60 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ vm_name }}
+  namespace: {{ namespace }}
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: {{ vm_name }}
+    spec:
+      domain:
+        devices:
+          disks:
+            - disk:
+                bus: virtio
+              name: root-disk
+            - disk:
+                bus: virtio
+              name: cloudinitdisk
+          interfaces:
+          {% for iface in interfaces %}
+          - name: {{ iface.name }}
+            {% if iface.type == 'pod' %}
+            masquerade: {}
+            {% else %}
+            bridge: {}
+            {% endif %} 
+          {% endfor %}
+        resources:
+          requests:
+            {% if memory %}
+            memory: {{ memory }}
+            {% endif %}
+            {% if cpu %}
+            cpu: {{ cpu }}
+            {% endif %}
+      networks:
+      {% for iface in interfaces %}
+      - name: {{ iface.name }}
+        {% if iface.type == 'pod' %}
+        pod: {}
+        {% else %}
+        multus:
+          networkName: {{ iface.nad_ref }}
+        {% endif %}
+      {% endfor %}
+      {% if node_selector %}
+      nodeSelector:
+        {{ node_selector.key }}: {{ node_selector.value }}
+      {% endif %}
+      volumes:
+        - name: root-disk
+          dataVolume:
+            name: {{ vm_name }}-root-disk
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef:
+              name: {{ vm_name }}-cloud-init

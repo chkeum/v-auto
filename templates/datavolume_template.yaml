@@ -1,0 +1,26 @@
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: {{ vm_name }}-root-disk
+  namespace: {{ namespace }}
+  annotations:
+    cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+    {% if node_selector %}
+    cdi.kubevirt.io/storage.node.selector: "{{ node_selector.key }}={{ node_selector.value }}"
+    {% endif %}
+spec:
+  source:
+    http:
+      url: {{ image_url }}
+  pvc:
+    accessModes:
+      - {{ access_mode }}
+    {% if node_selector %}
+    selector:
+      matchLabels:
+        {{ node_selector.key }}: {{ node_selector.value }}
+    {% endif %}
+    storageClassName: {{ storage_class }}
+    resources:
+      requests:
+        storage: {{ disk_size }}

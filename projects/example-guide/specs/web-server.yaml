@@ -1,0 +1,93 @@
+# ==========================================
+# [VM 스펙 정의 파일 예시]
+# 개별 VM의 자원, 네트워크, Cloud-Init 설정을 정의합니다.
+# 실행: python3 vm_manager.py example-guide web-server --replicas 2
+# ==========================================
+
+# 1. 기본 정보
+# 생성될 VM 이름의 접두사입니다. (예: web-server-1, web-server-2)
+name_prefix: web-server
+
+# 기본 배포 개수 (명령어에서 --replicas 로 덮어쓸 수 있습니다)
+replicas: 1
+
+# 2. 자원 할당 (Resources)
+# 주석(#) 처리하면 기본값이나 제한 없음으로 설정됩니다.
+cpu: 2          # CPU 코어 수
+memory: 4Gi     # 메모리 용량 (Gi, Mi)
+
+# 3. 이미지 (Image)
+# 사용할 OS 이미지의 URL입니다.
+image_url: "http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2"
+
+# 4. 디스크 설정 (Disk)
+disk_size: 20Gi
+storage_class: local-storage # (선택) 스토리지 클래스 지정
+
+# 5. 네트워크 설정 (Networks)
+# config.yaml 의 'networks' 항목에 정의된 이름을 사용합니다.
+networks:
+  - pod-net     # 첫 번째: Pod Network (Masquerade)
+  - default     # 두 번째: Multus Bridge Network
+  # [수동 IP 설정 예시]
+  # - name: default
+  #   static_ip: "10.215.100.250" # 자동 계산 대신 이 IP를 사용합니다.
+
+# 6. 클라우드 초기화 (Cloud-Init)
+# VM 부팅 시 실행될 설정입니다. (계정 생성, 파일 작성, 명령어 실행 등)
+cloud_init: |
+  #cloud-config
+  
+  # 비밀번호 일괄 설정 (password 프롬프트 자동 생성됨)
+  chpasswd:
+    list: |
+      cloud-user:{{ password }}
+      dev-user:{{ dev_password }}
+    expire: False
+  ssh_pwauth: True
+
+  # [계정 관리]
+  users:
+    - name: cloud-user
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+      # ssh_authorized_keys:
+      #   - ssh-rsa AAAAB3... (여기에 공용키 입력)
+
+    - name: dev-user
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+
+  # [네트워크 설정]
+  # 1. 자동 설정: vm_manager가 계산한 {{ static_ip }} 변수 사용
+  # 2. 수동 설정: 변수 대신 직접 IP 기입 (예: addresses: [10.215.100.200/24])
+  write_files:
+    - path: /etc/netplan/02-static.yaml
+      content: |
+        network:
+          version: 2
+          ethernets:
+            {% for snet in secondary_ips %}
+            {{ snet.interface }}:
+              dhcp4: no
+              addresses: [{{ snet.ip }}]
+            {% endfor %}
+            {% if not secondary_ips %}
+            {{ interface_name }}:
+              dhcp4: no
+              addresses: [{{ static_ip }}]
+            {% endif %}
+          nameservers:
+            addresses: [8.8.8.8]
+
+    - path: /etc/motd
+      content: |
+        Welcome to the Web Server!
+        Managed by VM Manager.
+
+  # [명령어 실행 예시]
+  runcmd:
+    - echo "VM is ready" > /tmp/status
+    - echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf
+    - systemctl restart ssh
+    - netplan apply
