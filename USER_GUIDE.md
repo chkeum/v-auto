@@ -44,22 +44,33 @@ cloud_init: |
 
 ## 3. 네트워크 심화 설계 (Multi-NIC & IPAM)
 
-### 3-1. 다중 NIC(랜카드) 구성 예시
-서비스망과 관리망을 분리하는 전형적인 구성입니다.
+### 3-1. 다중 NIC 및 NAD 관리 (`config.yaml`)
+
+`v-auto`는 OCP에 존재하는 NAD를 단순히 참조하거나, 직접 생성/관리(Managed)할 수 있습니다.
 
 ```yaml
 # config.yaml (카탈로그 정의)
 networks:
-  service-net: { bridge: br-ex, ipam: { range: "10.10.10.0/24" } }
-  mgmt-net:    { bridge: br-int, ipam: { range: "192.168.1.0/24" } }
-
-# spec.yaml (사용 설정)
-networks:
-  - service-net  # eth0 (통상 기본 게이트웨이 할당)
-  - mgmt-net     # eth1
+  service-net:
+    bridge: br-ex            # [Managed Mode] bridge가 있으면 v-auto가 NAD를 자동생성
+    nad_name: svc-nad        # (선택) NAD 이름을 명시. 생략 시 [VM이름]-net-0 등으로 자동생성
+    ipam:
+      range: "10.10.10.0/24"
+  mgmt-net:
+    nad_name: existing-nad   # [External Mode] bridge가 없으면 외부 NAD를 참조만 함
 ```
 
-### 3-2. 혼합 IP 할당 (Static + DHCP)
+**[spec.yaml (사용 설정)]**
+```yaml
+networks:
+  - service-net  # 첫 번째 랜카드 (eth0)
+  - mgmt-net     # 두 번째 랜카드 (eth1)
+```
+
+### 3-2. NAD 자동 명명 규칙
+- `nad_name`을 생략하면 `v-auto`는 **`[VM이름]-net-[순번]`** 형식으로 NAD를 자동 생성합니다. 이는 특정 VM 전용의 독립적인 네트워크 리소스를 안전하게 관리하기 위함입니다.
+
+### 3-3. 혼합 IP 할당 (Static + DHCP)
 - **eth0 (Static)**: `range` 설정을 통해 `.101` 등 고정 IP 할당.
 - **eth1 (DHCP)**: 카탈로그의 `ipam` 설정을 비워두면 인프라 DHCP를 사용하도록 동작.
 
