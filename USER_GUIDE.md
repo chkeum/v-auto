@@ -17,6 +17,24 @@
 - **`--replicas N`**: YAML 설정을 무시하고 일시적으로 N대의 복제본을 배포합니다.
 - **`--target NAME`**: 특정 인스턴스(예: `web-02`)만 핀포인트로 배포/삭제/조회합니다. 이름의 번호를 읽어 IP를 자동 계산합니다.
 
+### 1-3. 실무 CLI 실행 예시 (Usage Examples)
+```bash
+# 1. 표준 배포 (프로젝트: samsung, 스펙: web)
+python3 vm_manager.py samsung web deploy
+
+# 2. 특정 인스턴스 핀포인트 복구 (web-02만 다시 생성)
+python3 vm_manager.py samsung web deploy --target web-02
+
+# 3. 배포 현황 및 리소스 정밀 진단
+python3 vm_manager.py samsung web status
+
+# 4. 특정 인스턴스 단독 삭제
+python3 vm_manager.py samsung web delete --target web-01
+
+# 5. 전체 리소스 일괄 정리
+python3 vm_manager.py samsung web delete
+```
+
 ---
 
 ## 2. 계정 및 인증 심화 가이드 (Advanced Auth)
