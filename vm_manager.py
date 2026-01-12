@@ -499,8 +499,11 @@ def status_action(args):
     context = load_config(project, spec)
     ns = context.get('namespace', 'default')
     selector = f"v-auto/project={project},v-auto/spec={spec}"
+    if args.target:
+        selector = f"{selector},v-auto/name={args.target}"
 
-    print(f"\n[ Detailed Status Diagnostic: {project}/{spec} ]")
+    target_info = f" (Target: {args.target})" if args.target else ""
+    print(f"\n[ Detailed Status Diagnostic: {project}/{spec}{target_info} ]")
     print(f"Target Namespace: {ns}")
     print("=" * 100)
 
@@ -546,15 +549,15 @@ def status_action(args):
     # Search by label first
     pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={pvc_cols}'])
     
-    # If no labeled PVCs, try name prefix fallback (as DVs might not propagate labels to PVCs in old CDI)
+    # If no labeled PVCs, try name prefix fallback
     if not pvcs.strip() or "No resources found" in pvcs:
-        base_name = context.get('name_prefix', spec)
+        search_name = args.target if args.target else context.get('name_prefix', spec)
         # We fetch all PVCs and filter by name
         all_pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-o', f'custom-columns={pvc_cols}', '--ignore-not-found'])
         if all_pvcs.strip() and "No resources found" not in all_pvcs:
             lines = all_pvcs.splitlines()
             header = lines[0]
-            matched = [l for l in lines[1:] if l.split()[1].startswith(base_name)]
+            matched = [l for l in lines[1:] if l.split()[1].startswith(search_name)]
             if matched:
                 print(header)
                 for m in matched: print(m.replace("<none>", "  -   "))
@@ -580,9 +583,14 @@ def status_action(args):
         base_name = context.get('name_prefix', spec)
         lines = events_raw.splitlines()
         
-        # Filter: Only events related to this spec/base_name
-        # We look for matches in the whole line to catch related pods/pvc/dv
-        relevant = [l for l in lines if spec in l or base_name in l]
+        # Filter: Only events related to this spec/base_name/target
+        # If target is provided, we strictly filter by target name to avoid noise from other instances
+        search_term = args.target if args.target else spec
+        relevant = [l for l in lines if search_term in l or base_name in l]
+        
+        # If specific target, ensure it's actually about that target (more strict)
+        if args.target:
+            relevant = [l for l in relevant if args.target in l]
         
         if relevant:
             # Prioritize: Warning events go to top, then Normal
@@ -633,7 +641,10 @@ Examples:
   python3 vm_manager.py samsung web delete --target web-01
 
   # List current VMs and their status
-  python3 vm_manager.py samsung web list
+  python3 vm_manager.py samsung web status
+
+  # Check status of a specific VM instance
+  python3 vm_manager.py samsung web status --target web-01
 """
     )
     
@@ -655,7 +666,7 @@ Examples:
     group_opt.add_argument('--replicas', type=int, 
                            help="Override the default replica count defined in the spec YAML")
     group_opt.add_argument('--target', 
-                           help="Specific VM instance name for granular deletion (e.g. web-02)")
+                           help="Specific VM instance name for granular action (e.g. web-02)")
     
     args = parser.parse_args()
     

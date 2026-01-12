@@ -20,7 +20,7 @@ python3 vm_manager.py [PROJECT] [SPEC] [ACTION] [OPTIONS]
 
 ### 1-3. 주요 스위치 (Flags)
 - **`--replicas N`**: YAML에 정의된 `replicas` 수치를 무시하고 N대만큼 배포합니다.
-- **`--target NAME`**: (`delete` 시) 특정 이름의 VM만 핀포인트로 삭제할 때 사용합니다.
+- **`--target NAME`**: (`delete` / `status` 시) 특정 이름의 VM만 핀포인트로 삭제하거나 상태를 조회할 때 사용합니다.
 - **`--project` / `--spec`**: 위치 인자 대신 명시적으로 프로젝트와 스펙을 지정할 때 사용합니다.
 
 ---
