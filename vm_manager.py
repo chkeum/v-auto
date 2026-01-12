@@ -688,17 +688,17 @@ Examples:
     
     # 1. Positional Arguments
     parser.add_argument('args_pos', nargs='*', metavar='project spec action', 
-                        help="Positional arguments: [project] (e.g. samsung), [spec] (e.g. web), [action] (deploy|delete|list)")
+                        help="Positional arguments: [project] (e.g. samsung), [spec] (e.g. web), [action] (deploy|delete|status)")
     
     # 2. Flag-based Arguments (Highest Priority)
     group = parser.add_argument_group('Target Selection')
-    group.add_argument('--vendor', '--project', dest='project_flag', 
+    group.add_argument('--project', dest='project_flag', 
                         help="Target project directory name in 'projects/'")
     group.add_argument('--spec', dest='spec_flag', 
                         help="VM specification file name in 'projects/[project]/specs/' (without .yaml)")
     group.add_argument('--action', dest='action_flag', 
-                        choices=['deploy', 'delete', 'list', 'status'], 
-                        help="Lifecycle action: 'deploy' (create), 'delete' (cleanup), 'list' (show status)")
+                        choices=['deploy', 'delete', 'status'], 
+                        help="Lifecycle action: 'deploy' (create), 'delete' (cleanup), 'status' (show health)")
     
     group_opt = parser.add_argument_group('Optional Overrides')
     group_opt.add_argument('--replicas', type=int, 
