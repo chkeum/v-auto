@@ -440,13 +440,16 @@ def delete_action(args):
 
     print("\nTHE FOLLOWING RESOURCES WILL BE PERMANENTLY DELETED:")
     if found_by_label:
-        print(f"\n--- Managed Resources (Selector: {selector}) ---")
-        for r in found_by_label: 
-            print(f"  {r}")
+        print(f"\n[ 1. Managed Resources (Selector: {selector}) ]")
+        table = run_command(['oc', 'get', kinds, '-n', namespace, '-l', selector, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready'])
+        print(table)
+        
     if found_by_name:
-        print(f"\n--- Legacy/Unmanaged (Matching Prefix: {base_name}-*) ---")
-        for r in found_by_name: 
-            print(f"  {r}")
+        print(f"\n[ 2. Legacy/Unmanaged (Matching Prefix: {base_name}-*) ]")
+        # For legacy, we might need a slightly different command since they don't have the label selector
+        legacy_names = ",".join(found_by_name)
+        table = run_command(['oc', 'get', legacy_names, '-n', namespace, '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready', '--ignore-not-found'])
+        print(table)
 
     if input("\nAre you sure you want to proceed with deletion? [y/N]: ").lower() != 'y':
         print("Cancelled.")
