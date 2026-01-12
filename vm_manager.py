@@ -482,36 +482,67 @@ def list_action(args):
     spec = args.spec
     context = load_config(project, spec)
     ns = context.get('namespace', 'default')
-    
     selector = f"v-auto/project={project},v-auto/spec={spec}"
-    kinds = "vm,dv,secret,net-attach-def"
-
-    print(f"\n[ Resource List for {project}/{spec} ]")
-    print(f"Namespace: {ns}")
-    print("=" * 60)
     
-    # 1. Managed Resources (by labels)
-    print("\n1. Managed Resources (Labeled: v-auto/spec=%s)" % spec)
-    cmd = ['oc', 'get', kinds, '-n', ns, '-l', selector, '--ignore-not-found']
-    output = run_command(cmd)
-    if not output.strip() or "No resources found" in output:
-        print("   - No labeled resources found.")
-    else:
-        print(output)
+    print(f"\n[ Summary List: {project}/{spec} ]")
+    print(f"Namespace: {ns} | Selector: {selector}")
+    print("-" * 70)
     
-    # 2. Broader Context (All VMs in Namespace)
-    print("\n2. All VirtualMachines in Namespace")
-    print("-" * 60)
-    vms = run_command(['oc', 'get', 'vm', '-n', ns, '-o', 'wide'])
-    if not vms.strip() or "No resources found" in vms:
-        print("   - No VMs found in namespace.")
+    # Simple table of all managed resource names/kinds
+    managed = run_command(['oc', 'get', 'all,dv,secret,net-attach-def', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready'])
+    if not managed.strip() or "No resources found" in managed:
+        print("   - No managed resources found.")
     else:
-        print(vms)
-    print("=" * 60 + "\n")
+        print(managed)
+    
+    print("\n* Use 'status' command for detailed VM health and IP information.")
+    print("-" * 70 + "\n")
 
 def status_action(args):
-    # Similar to list but maybe more detail
-    list_action(args)
+    project = args.project
+    spec = args.spec
+    context = load_config(project, spec)
+    ns = context.get('namespace', 'default')
+    selector = f"v-auto/project={project},v-auto/spec={spec}"
+
+    print(f"\n[ Detailed Status Diagnostic: {project}/{spec} ]")
+    print(f"Target Namespace: {ns}")
+    print("=" * 70)
+
+    # 1. VM/VMI Detailed Status
+    print("\n1. VM Instance Health & Networking")
+    print("-" * 70)
+    # Get VM and VMI details
+    vms = run_command(['oc', 'get', 'vm', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready,VOLUME_READY:.status.volumeRequests[*].type'])
+    print(vms if vms.strip() else "   - No VMs found.")
+
+    # Show active VMIs (for IP info)
+    print("\n2. Active Runtime (VMI) & IPs")
+    print("-" * 70)
+    vmis = run_command(['oc', 'get', 'vmi', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=NAME:.metadata.name,PHASE:.status.phase,IP:.status.interfaces[0].ipAddress,NODE:.status.nodeName'])
+    print(vmis if vmis.strip() else "   - No active VM instances (Running) found.")
+
+    # 3. Storage (DataVolume) Progress
+    print("\n3. Storage & Disk Provisioning (DataVolumes)")
+    print("-" * 70)
+    dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', 'custom-columns=NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress,STORAGE_CLASS:.spec.storageClassName'])
+    print(dvs if dvs.strip() else "   - No DataVolumes found.")
+
+    # 4. Recent Events (Top 5)
+    print("\n4. Recent Lifecycle Events (Top 5)")
+    print("-" * 70)
+    events = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
+    if events.strip():
+        # Filter for our resources (crude grep)
+        filtered_events = [line for line in events.splitlines() if spec in line or project in line][-5:]
+        if filtered_events:
+            for e in filtered_events: print(f"  {e}")
+        else:
+            print("   - No specific events for this spec recently.")
+    else:
+        print("   - No events found in namespace.")
+    
+    print("\n" + "=" * 70 + "\n")
 
 
 def main():
