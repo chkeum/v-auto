@@ -35,8 +35,22 @@ def run_command(cmd, input_data=None):
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        # print(f"DEBUG: Command failed: {e.stderr}")
-        raise e
+        # If command fails, we want to see the error from the tool (e.g. oc stderr)
+        error_msg = e.stderr.strip() if e.stderr else str(e)
+        raise Exception(error_msg)
+
+def ensure_namespace(namespace):
+    """Ensures the Kubernetes namespace exists."""
+    try:
+        run_command(['oc', 'get', 'namespace', namespace])
+    except:
+        print(f"  [INFO] Namespace '{namespace}' not found. Creating...")
+        try:
+            run_command(['oc', 'create', 'namespace', namespace])
+            print(f"  [SUCCESS] Namespace '{namespace}' created.")
+        except Exception as e:
+            print(f"  [ERROR] Failed to create namespace '{namespace}': {e}")
+            sys.exit(1)
 
 def load_yaml(path):
     if not os.path.exists(path):
@@ -320,6 +334,9 @@ def deploy_action(args):
         print("Cancelled.")
         return
 
+    # --- Ensure Namespace ---
+    ensure_namespace(namespace)
+
     # --- Replica Loop ---
     for i in indices:
         # Generate suffix: -01, -02 etc. if multiple or if index is high (targeted)
@@ -542,113 +559,117 @@ def status_action(args):
     print(f"Target Namespace: {ns}")
     print("=" * 100)
 
-    # 1. Virtual Machines (Managed)
-    print("\n1. Managed Virtual Machines (Health & Power)")
-    print("-" * 100)
-    vm_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready"
-    vms = run_command(['oc', 'get', 'vm', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={vm_cols}'])
-    clean_print_table(vms, "Virtual Machines")
+    try:
+        # 1. Virtual Machines (Managed)
+        print("\n1. Managed Virtual Machines (Health & Power)")
+        print("-" * 100)
+        vm_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,READY:.status.ready"
+        vms = run_command(['oc', 'get', 'vm', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={vm_cols}'])
+        clean_print_table(vms, "Virtual Machines")
 
-    # 2. Active Runtime & IP Addresses (VMI / Pod)
-    print("\n2. Active Runtime & IP Addresses (VMI / Pod)")
-    print("-" * 100)
-    rt_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,VMI-IP:.status.interfaces[0].ipAddress,POD-IP:.status.podIP,NODE:.spec.nodeName"
-    runtime_raw = run_command(['oc', 'get', 'vmi,pod', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={rt_cols}'])
-    
-    if not runtime_raw.strip() or "No resources found" in runtime_raw:
-        print("   - No active runtimes found.")
-    else:
-        lines = runtime_raw.strip().splitlines()
-        print(f"{'KIND':<25} {'NAME':<30} {'PHASE':<12} {'ADDRESS':<18} {'NODE'}")
-        for line in lines[1:]:
-            parts = line.split()
-            if len(parts) < 3: continue
-            kind, name, phase = parts[0], parts[1], parts[2]
-            vmi_ip = parts[3] if len(parts) > 3 else "<none>"
-            pod_ip = parts[4] if len(parts) > 4 else "<none>"
-            node = parts[5] if len(parts) > 5 else "-"
-            addr = vmi_ip if vmi_ip != "<none>" else (pod_ip if pod_ip != "<none>" else "-")
-            print(f"{kind:<25} {name:<30} {phase:<12} {addr:<18} {node}")
+        # 2. Active Runtime & IP Addresses (VMI / Pod)
+        print("\n2. Active Runtime & IP Addresses (VMI / Pod)")
+        print("-" * 100)
+        rt_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,VMI-IP:.status.interfaces[0].ipAddress,POD-IP:.status.podIP,NODE:.spec.nodeName"
+        runtime_raw = run_command(['oc', 'get', 'vmi,pod', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={rt_cols}'])
+        
+        if not runtime_raw.strip() or "No resources found" in runtime_raw:
+            print("   - No active runtimes found.")
+        else:
+            lines = runtime_raw.strip().splitlines()
+            print(f"{'KIND':<25} {'NAME':<30} {'PHASE':<12} {'ADDRESS':<18} {'NODE'}")
+            for line in lines[1:]:
+                parts = line.split()
+                if len(parts) < 3: continue
+                kind, name, phase = parts[0], parts[1], parts[2]
+                vmi_ip = parts[3] if len(parts) > 3 else "<none>"
+                pod_ip = parts[4] if len(parts) > 4 else "<none>"
+                node = parts[5] if len(parts) > 5 else "-"
+                addr = vmi_ip if vmi_ip != "<none>" else (pod_ip if pod_ip != "<none>" else "-")
+                print(f"{kind:<25} {name:<30} {phase:<12} {addr:<18} {node}")
 
-    # 3. Storage Provisioning (DataVolume & PVC)
-    print("\n3. Storage & Disk Provisioning (DataVolumes / PVC)")
-    print("-" * 100)
-    # DataVolume Status
-    dv_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress"
-    dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={dv_cols}'])
-    clean_print_table(dvs, "DataVolumes")
-    
-    print("-" * 30)
-    # PVC Status (Physical allocation)
-    pvc_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.phase,CAPACITY:.status.capacity.storage,ACCESS-MODES:.spec.accessModes"
-    # Search by label first
-    pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={pvc_cols}'])
-    
-    # If no labeled PVCs, try name prefix fallback
-    if not pvcs.strip() or "No resources found" in pvcs:
-        search_name = args.target if args.target else context.get('name_prefix', spec)
-        # We fetch all PVCs and filter by name
-        all_pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-o', f'custom-columns={pvc_cols}', '--ignore-not-found'])
-        if all_pvcs.strip() and "No resources found" not in all_pvcs:
-            lines = all_pvcs.splitlines()
-            header = lines[0]
-            matched = [l for l in lines[1:] if l.split()[1].startswith(search_name)]
-            if matched:
-                print(header)
-                for m in matched: print(m.replace("<none>", "  -   "))
+        # 3. Storage Provisioning (DataVolume & PVC)
+        print("\n3. Storage & Disk Provisioning (DataVolumes / PVC)")
+        print("-" * 100)
+        # DataVolume Status
+        dv_cols = "KIND:.kind,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress"
+        dvs = run_command(['oc', 'get', 'dv', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={dv_cols}'])
+        clean_print_table(dvs, "DataVolumes")
+        
+        print("-" * 30)
+        # PVC Status (Physical allocation)
+        pvc_cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.phase,CAPACITY:.status.capacity.storage,ACCESS-MODES:.spec.accessModes"
+        # Search by label first
+        pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={pvc_cols}'])
+        
+        # If no labeled PVCs, try name prefix fallback
+        if not pvcs.strip() or "No resources found" in pvcs:
+            search_name = args.target if args.target else context.get('name_prefix', spec)
+            # We fetch all PVCs and filter by name
+            all_pvcs = run_command(['oc', 'get', 'pvc', '-n', ns, '-o', f'custom-columns={pvc_cols}', '--ignore-not-found'])
+            if all_pvcs.strip() and "No resources found" not in all_pvcs:
+                lines = all_pvcs.splitlines()
+                header = lines[0]
+                matched = [l for l in lines[1:] if l.split()[1].startswith(search_name)]
+                if matched:
+                    print(header)
+                    for m in matched: print(m.replace("<none>", "  -   "))
+                else:
+                    print("   - No matching PVCs found.")
             else:
-                print("   - No matching PVCs found.")
+                print("   - No PVCs found.")
         else:
-            print("   - No PVCs found.")
-    else:
-        clean_print_table(pvcs, "PVCs")
+            clean_print_table(pvcs, "PVCs")
 
-    # 4. Configuration & Network (NAD / Secret)
-    print("\n4. Network (NAD) & Config (Secret) Resources")
-    print("-" * 100)
-    cfg_cols = "KIND:.kind,NAME:.metadata.name,CREATED:.metadata.creationTimestamp"
-    configs = run_command(['oc', 'get', 'net-attach-def,secret', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={cfg_cols}'])
-    clean_print_table(configs, "Config Resources")
+        # 4. Configuration & Network (NAD / Secret)
+        print("\n4. Network (NAD) & Config (Secret) Resources")
+        print("-" * 100)
+        cfg_cols = "KIND:.kind,NAME:.metadata.name,CREATED:.metadata.creationTimestamp"
+        configs = run_command(['oc', 'get', 'net-attach-def,secret', '-n', ns, '-l', selector, '--ignore-not-found', '-o', f'custom-columns={cfg_cols}'])
+        clean_print_table(configs, "Config Resources")
 
-    # 5. Recent Events (Intelligent Diagnostics)
-    print("\n5. Recent Events (Priority: Warning first, Max 15)")
-    print("-" * 100)
-    events_raw = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
-    if events_raw.strip():
-        base_name = context.get('name_prefix', spec)
-        lines = events_raw.splitlines()
-        
-        # Filter: Only events related to this spec/base_name/target
-        # If target is provided, we strictly filter by target name to avoid noise from other instances
-        search_term = args.target if args.target else spec
-        relevant = [l for l in lines if search_term in l or base_name in l]
-        
-        # If specific target, ensure it's actually about that target (more strict)
-        if args.target:
-            relevant = [l for l in relevant if args.target in l]
-        
-        if relevant:
-            # Prioritize: Warning events go to top, then Normal
-            warnings = [l for l in relevant if "Warning" in l]
-            normals = [l for l in relevant if "Normal" in l]
+        # 5. Recent Events (Intelligent Diagnostics)
+        print("\n5. Recent Events (Priority: Warning first, Max 15)")
+        print("-" * 100)
+        events_raw = run_command(['oc', 'get', 'events', '-n', ns, '--sort-by=.lastTimestamp', '--ignore-not-found'])
+        if events_raw.strip():
+            base_name = context.get('name_prefix', spec)
+            lines = events_raw.splitlines()
             
-            # Combine and limit to 15
-            final_list = (warnings + normals)[-15:]
+            # Filter: Only events related to this spec/base_name/target
+            # If target is provided, we strictly filter by target name to avoid noise from other instances
+            search_term = args.target if args.target else spec
+            relevant = [l for l in lines if search_term in l or base_name in l]
             
-            print(f"{'AGE':<10} {'TYPE':<8} {'REASON':<15} {'OBJECT':<40} {'MESSAGE'}")
-            for e in final_list:
-                p = e.split()
-                if len(p) < 5: continue
-                # AGE(0), TYPE(1), REASON(2), OBJECT(3), MESSAGE(4...)
-                age, etype, reason, obj = p[0], p[1], p[2], p[3]
-                msg = " ".join(p[4:])
-                # Truncate object name if too long to keep table aligned
-                if len(obj) > 38: obj = obj[:35] + "..."
-                print(f"{age:<10} {etype:<8} {reason:<15} {obj:<40} {msg}")
+            # If specific target, ensure it's actually about that target (more strict)
+            if args.target:
+                relevant = [l for l in relevant if args.target in l]
+            
+            if relevant:
+                # Prioritize: Warning events go to top, then Normal
+                warnings = [l for l in relevant if "Warning" in l]
+                normals = [l for l in relevant if "Normal" in l]
+                
+                # Combine and limit to 15
+                final_list = (warnings + normals)[-15:]
+                
+                print(f"{'AGE':<10} {'TYPE':<8} {'REASON':<15} {'OBJECT':<40} {'MESSAGE'}")
+                for e in final_list:
+                    p = e.split()
+                    if len(p) < 5: continue
+                    # AGE(0), TYPE(1), REASON(2), OBJECT(3), MESSAGE(4...)
+                    age, etype, reason, obj = p[0], p[1], p[2], p[3]
+                    msg = " ".join(p[4:])
+                    # Truncate object name if too long to keep table aligned
+                    if len(obj) > 38: obj = obj[:35] + "..."
+                    print(f"{age:<10} {etype:<8} {reason:<15} {obj:<40} {msg}")
+            else:
+                print("   - No specific events found for this spec recently.")
         else:
-            print("   - No specific events found for this spec recently.")
-    else:
-        print("   - No events found in namespace.")
+            print("   - No events found in namespace.")
+    except Exception as e:
+        print(f"\n[WARNING] Could not retrieve full status summary: {e}")
+        print("This may be expected if resources are still being created or if permissions are restricted.")
     
     print("\n" + "=" * 100 + "\n")
 
