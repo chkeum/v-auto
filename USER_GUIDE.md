@@ -18,7 +18,7 @@
 #### [deploy] 실행 시
 ```text
 === 배포 계획 (Dry-run) ===
-Project: samsung, Spec: web, Replicas: 2
+Project: opasnet, Spec: web, Replicas: 2
 - VM 1: web-01 (IP: 10.10.10.101)
 - VM 2: web-02 (IP: 10.10.10.102)
 
@@ -32,7 +32,7 @@ Proceed? (y/n): y
 
 #### [status] 실행 시
 ```text
-=== v-auto Deployment Status (samsung/web) ===
+=== v-auto Deployment Status (opasnet/web) ===
 
 RESOURCE  NAME    PHASE    ADDRESS       PROGRESS  AGE
 VM        web-01  Running  10.10.10.101  100%      2m

@@ -42,23 +42,23 @@ v-auto/
 
 ### 1단계: 프로젝트 준비
 ```bash
-# 기본 제공되는 samsung 프로젝트 예시 확인
-ls projects/samsung/specs/web.yaml
+# 기본 제공되는 opasnet 프로젝트 예시 확인
+ls projects/opasnet/specs/web.yaml
 ```
 
 ### 2단계: VM 배포 (Review 포함)
 ```bash
 # 툴이 설정을 검토하고 대상을 보여줍니다. (y/n 확인 절차 포함)
-python3 vm_manager.py samsung web deploy
+python3 vm_manager.py opasnet web deploy
 ```
 
 ### 3단계: 상태 확인 및 삭제
 ```bash
 # 배포된 VM 리스트 및 상태 확인 (IP, 이벤트 정보 포함)
-python3 vm_manager.py samsung web status
+python3 vm_manager.py opasnet web status
 
 # 전체 리소스 안전하게 정리
-python3 vm_manager.py samsung web delete
+python3 vm_manager.py opasnet web delete
 ```
 
 ---

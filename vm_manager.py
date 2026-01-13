@@ -664,31 +664,31 @@ def main():
         epilog="""
 Examples:
   # Deploy a specific spec for a project
-  python3 vm_manager.py samsung web deploy
+  python3 vm_manager.py opasnet web deploy
 
   # Deploy with specific replica count and flag-based arguments
-  python3 vm_manager.py --project samsung --spec db deploy --replicas 3
+  python3 vm_manager.py --project opasnet --spec db deploy --replicas 3
 
   # Deploy/Recover a specific VM instance only
-  python3 vm_manager.py samsung web deploy --target web-02
+  python3 vm_manager.py opasnet web deploy --target web-02
 
   # Delete all resources associated with a specific spec
-  python3 vm_manager.py samsung web delete
+  python3 vm_manager.py opasnet web delete
 
   # Delete a specific VM instance only
-  python3 vm_manager.py samsung web delete --target web-01
+  python3 vm_manager.py opasnet web delete --target web-01
 
   # List current VMs and their status
-  python3 vm_manager.py samsung web status
+  python3 vm_manager.py opasnet web status
 
   # Check status of a specific VM instance
-  python3 vm_manager.py samsung web status --target web-01
+  python3 vm_manager.py opasnet web status --target web-01
 """
     )
     
     # 1. Positional Arguments
     parser.add_argument('args_pos', nargs='*', metavar='project spec action', 
-                        help="Positional arguments: [project] (e.g. samsung), [spec] (e.g. web), [action] (deploy|delete|status)")
+                        help="Positional arguments: [project] (e.g. opasnet), [spec] (e.g. web), [action] (deploy|delete|status)")
     
     # 2. Flag-based Arguments (Highest Priority)
     group = parser.add_argument_group('Target Selection')
@@ -730,7 +730,7 @@ Examples:
 
     # Validation & Enhanced Error Reporting
     missing = []
-    if not project: missing.append("project (e.g. samsung)")
+    if not project: missing.append("project (e.g. opasnet)")
     if not spec: missing.append("spec (e.g. web)")
     if not action: missing.append("action (deploy, delete, status)")
 

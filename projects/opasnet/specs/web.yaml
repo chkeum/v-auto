@@ -13,11 +13,11 @@ cloud_init: |
   ssh_pwauth: True
   chpasswd:
     list: |
-      samsung-admin:{{ password }}
+      opasnet-admin:{{ password }}
       dev-user:{{ dev_password }}
     expire: False
   users:
-    - name: samsung-admin
+    - name: opasnet-admin
       ssh_authorized_keys:
         - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDEvFiws1NEVfzAShpTwpB1VxiLEiGQ7rLB3kNor2alwUFnTjOb9zQkbqVxCNmWbde4XzkfJqs5n3wIrzukOKomqbBJ1vFMej6I0CJj6JHc3a1WNG4RGs8sWZG/RbcH1Qsp5Rwzj38gppuARlonHZnVyfBsIdJSYtTmEmeO/szLK1K+vSsO8kzkveV7lXEEI3kXOUpK3X0SJS5dPK0lPCedvlFVGPjQvlA8n4g1OFhSOe/tprx47Rl/E0/oeZte5LUZkJkru9AMW9l2MGv2mgV8/xZCwoL1QVACMBC14VkS/Ac3blICMTD39MilQ3d8YLFaYusom5xyikY/65oT1YSKKYPSfxj5nNdhYsoFVAtjcCLYI6KJGhwroKND0l7ThxmF6lNCBUtkJnTrMczk0nSnFEGj/+3RCFRRHWoyauMGQeArNrYjSgS5SYMszsPPOuYLsH79aRsmXf2cJ3E1sS21d5BR5NbO57lENB3b02EuIeZ4znPXhvKUBqNOlljd6oc= core@bastion.chk-ocp.skt.local
       groups: [wheel]
