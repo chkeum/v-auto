@@ -118,24 +118,54 @@ def get_network_config(entry, networks_catalog):
 
 def discover_password_inputs(context):
     """
-    Scans cloud_init for 'user:{{ var }}' patterns in chpasswd/list 
-    to automatically identify which passwords to prompt for.
+    Scans cloud_init for password variable patterns to automatically 
+    identify which passwords to prompt for.
+    Supports:
+    1. chpasswd list style: 'username:{{ var }}'
+    2. users list style: '- name: username' followed by 'passwd: {{ var }}'
     """
     import re
     raw_ci = context.get('cloud_init', '')
     if not raw_ci: return []
     
-    # regex to find 'username:{{ password_var }}'
-    matches = re.findall(r'^\s*([^:\s]+):\{\{\s*(\w+)\s*\}\}', raw_ci, re.MULTILINE)
-    
     discovered = []
-    for user, key in matches:
+    seen_keys = set()
+
+    # 1. chpasswd pattern: 'username:{{ var }}'
+    # Looks for 'user:{{ password_var }}' in chpasswd/list blocks
+    chpasswd_matches = re.findall(r'^\s*([^:\s\-]+):\{\{\s*(\w+)\s*\}\}', raw_ci, re.MULTILINE)
+    for user, key in chpasswd_matches:
         if key in ['username', 'interface_name', 'static_ip', 'gateway_ip']: continue
+        if key not in seen_keys:
+            discovered.append({
+                'key': key,
+                'prompt': f"Enter password for user '{user}'"
+            })
+            seen_keys.add(key)
+
+    # 2. users list pattern: 
+    #   - name: username
+    #     passwd: {{ var }}
+    # We look for '- name: <user>' and then the next 'pass[wd|word]: {{ <key> }}'
+    # This is a bit more complex with regex, so we'll use a scanning approach or a multi-line regex
+    user_blocks = re.split(r'^\s*-\s*name:', raw_ci, flags=re.MULTILINE)
+    for block in user_blocks[1:]: # Skip text before the first '- name:'
+        # Get the username (first word of the block)
+        name_match = re.match(r'^\s*([\w\-]+)', block)
+        if not name_match: continue
+        username = name_match.group(1).strip()
         
-        discovered.append({
-            'key': key,
-            'prompt': f"Enter password for user '{user}'"
-        })
+        # Look for password/passwd key in this specific user block
+        pass_match = re.search(r'^\s*pass(?:wd|word):\s*[\'"]?\{\{\s*(\w+)\s*\}\}[\'"]?', block, re.MULTILINE)
+        if pass_match:
+            key = pass_match.group(1)
+            if key not in seen_keys:
+                discovered.append({
+                    'key': key,
+                    'prompt': f"Enter password for user '{username}'"
+                })
+                seen_keys.add(key)
+
     return discovered
 
 def render_manifests(ctx):
