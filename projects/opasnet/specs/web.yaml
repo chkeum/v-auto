@@ -1,5 +1,5 @@
-# [Integrated Spec File v1.3]
-# Now includes infrastructure definitions directly.
+# Opasnet Web Server Spec
+# Defines Infrastructure (L2/Bridged) and Instances
 
 infrastructure:
   networks:
@@ -32,9 +32,8 @@ infrastructure:
 # Common Configuration
 common:
   image: "ubuntu-22.04"
-  cpu: 1 # Default from config is 1, but we can be explicit
+  cpu: 1
   memory: 1Gi
-  # network: default  <-- Removed generic default, using explicit lists
 
 cloud_init: |
   #cloud-config

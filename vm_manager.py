@@ -116,7 +116,7 @@ def load_config(project_name, spec_name):
         'namespace': f"vm-{project_name}",  # Convention: vm-<project>
         'cpu': 2,
         'memory': "4Gi",
-        'disk_size': "50Gi",
+        'disk_size': "20Gi",
         'auth': {} # Default empty, triggers interactive prompt if needed
     }
     
@@ -666,7 +666,9 @@ def delete_action(args):
         table = run_command(['oc', 'get', legacy_names, '-n', namespace, '-o', f'custom-columns={cols}', '--ignore-not-found'])
         clean_print_table(table, "Resources")
 
-    if input("\nAre you sure you want to proceed with deletion? [y/N]: ").lower() != 'y':
+    if args.yes:
+        print("\n[--yes flag] Skipping confirmation prompt.")
+    elif input("\nAre you sure you want to proceed with deletion? [y/N]: ").lower() != 'y':
         print("Cancelled.")
         return
 
