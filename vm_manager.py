@@ -165,9 +165,17 @@ def get_network_config(entry, networks_catalog):
             # Merge catalog defaults with entry overrides
             conf = copy.deepcopy(networks_catalog[name])
             conf.update(entry)
+            conf['name'] = name # Ensure name is set
             return conf
         return entry
-    return networks_catalog.get(entry)
+    
+    # String case
+    conf = networks_catalog.get(entry)
+    if conf:
+        conf = copy.deepcopy(conf) # Safety copy
+        conf['name'] = entry
+        return conf
+    return None
 
 def discover_password_inputs(context):
     """
@@ -452,53 +460,50 @@ def deploy_action(args):
         # Determine Interfaces for this instance
         instance_interfaces = copy.deepcopy(base_interfaces)
         
-        # --- Network Injection Logic ---
-        # If instance has explicit 'ip', we find the matching interface and inject static IP config
-        target_ip = inst.get('ip')
-        if target_ip:
-            # We assume the first non-pod network is the primary one to set static IP on
-            # Or we could match by network name if provided in 'instances'. 
-            # We apply to the first valid Multus interface found.
-            injected = False
-            for idx, net in enumerate(instance_interfaces):
-                if net.get('type') == 'pod': continue
-                
-                # Verify IP belongs to subnet
-                subnet_cidr = net.get('ipam', {}).get('range')
-                gateway = net.get('ipam', {}).get('gateway')
-                
-                if subnet_cidr:
-                    try:
-                        network = ipaddress.IPv4Network(subnet_cidr, strict=False)
-                        if ipaddress.IPv4Address(target_ip) not in network:
-                            print(f"[WARNING] Instance {vm_name} IP {target_ip} is outside subnet {subnet_cidr}. Ignoring injection.")
-                            continue
-                            
-                        # Correct logic: Inject Static IPAM type
-                        safe_cidr_suffix = str(network.prefixlen)
-                        net['ipam']['type'] = 'static'
-                        net['ipam']['addresses'] = [{'address': f"{target_ip}/{safe_cidr_suffix}"}]
-                        
-                        # Generate Instance-Specific NAD Name
-                        orig_nad = net.get('nad_name', 'net')
-                        net['nad_name'] = f"{vm_name}-{orig_nad}"
+        # --- Network Injection Logic (Multi-NIC Support) ---
+        target_interfaces = inst.get('interfaces', [])
+        legacy_ip = inst.get('ip')
+        
+        # Normalize to list format if legacy 'ip' is used
+        if not target_interfaces and legacy_ip:
+            # Find first non-pod network to apply legacy IP
+            first_net = next((n for n in instance_interfaces if n.get('type') != 'pod'), None)
+            if first_net:
+                target_interfaces.append({'network': first_net.get('name'), 'ip': legacy_ip})
 
-                        # Cloud-Init Variables Injection
-                        instance_ctx['static_ip'] = f"{target_ip}/{safe_cidr_suffix}"
-                        instance_ctx['gateway_ip'] = gateway
-                        
-                        # Dynamic Interface Name Calculation (VirtIO convention: enp{idx+1}s0)
-                        # nic0 -> enp1s0, nic1 -> enp2s0
-                        instance_ctx['interface_name'] = f'enp{idx+1}s0' 
-                        
-                        print(f"    [Net-Inject] {vm_name}: Static IP {target_ip} on injected NAD {net['nad_name']} (Interface: {instance_ctx['interface_name']})")
-                        injected = True
-                        break # Only inject one primary IP for now
-                    except Exception as e:
-                        print(f"[ERROR] Invalid IP configuration: {e}")
+        # Apply Overrides
+        for override in target_interfaces:
+            net_name = override.get('network')
+            target_ip = override.get('ip')
+            if not net_name or not target_ip: continue
             
-            if not injected:
-                 print(f"[WARNING] Could not inject Static IP {target_ip}. No matching subnet found in interfaces.")
+            # Find matching interface in catalog
+            match = next((n for n in instance_interfaces if n.get('name') == net_name), None)
+            if not match:
+                print(f"[WARNING] Instance {vm_name}: Network '{net_name}' not found in common configuration.")
+                continue
+
+            # Inject Static IP into NAD
+            subnet_cidr = match.get('ipam', {}).get('range')
+            if subnet_cidr:
+                try:
+                    network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                    if ipaddress.IPv4Address(target_ip) not in network:
+                        print(f"[WARNING] Instance {vm_name} IP {target_ip} is outside subnet {subnet_cidr}.")
+                        # We proceed anyway as user might know better, or just warn.
+                        
+                    safe_cidr_suffix = str(network.prefixlen)
+                    match['ipam']['type'] = 'static'
+                    match['ipam']['addresses'] = [{'address': f"{target_ip}/{safe_cidr_suffix}"}]
+                    match['ip'] = target_ip # Expose for template (e.g. {{ interfaces[0].ip }})
+                    
+                    # Generate Instance-Specific NAD Name
+                    orig_nad = match.get('nad_name', 'net')
+                    match['nad_name'] = f"{vm_name}-{orig_nad}"
+                    
+                    print(f"    [Net-Inject] {vm_name}: Static IP {target_ip} on '{net_name}' (NAD: {match['nad_name']})")
+                except Exception as e:
+                    print(f"[ERROR] Invalid IP configuration for {vm_name}: {e}")
 
         instance_ctx['interfaces'] = instance_interfaces
         

@@ -1,4 +1,4 @@
-# [Integrated Spec File v1.1]
+# [Integrated Spec File v1.2]
 # Now includes infrastructure definitions directly.
 
 infrastructure:
@@ -52,11 +52,16 @@ cloud_init: |
         network:
           version: 2
           ethernets:
-            {{ interface_name }}:
+            # Manual Network Configuration
+            # enp2s0 corresponds to the 'default' network (1st Nic after pod-net)
+            enp2s0:
               dhcp4: no
-              addresses: [{{ static_ip }}]
+              addresses: [{{ interfaces[0].ip }}/24]
               nameservers:
                 addresses: [8.8.8.8]
+              routes:
+                - to: default
+                  via: 10.215.100.1
 
   runcmd:
     - echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf
@@ -65,9 +70,14 @@ cloud_init: |
 
 
 
-# Explicit Instances Definition
+# Explicit Instances Definition (Multi-NIC Supported)
 instances:
   - name: web-01
-    ip: 10.215.100.101
+    interfaces:
+      - network: default
+        ip: 10.215.100.101
+
   - name: web-02
-    ip: 10.215.100.102
+    interfaces:
+      - network: default
+        ip: 10.215.100.102
