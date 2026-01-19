@@ -1,64 +1,47 @@
-# v-auto: OpenShift VM Deployment Automation
+# v-auto: OpenShift VM Deployment Automation (v2.0)
 
-`v-auto`는 OpenShift Virtualization 환경에서 가상 머신(VM)의 배포와 관리를 자동화하는 경량 CLI 도구입니다. 특히 외부 네트워크가 차단된 **폐쇄망(Air-gapped) 환경**에서도 모든 의존성을 포함하여 안정적으로 동작하도록 설계되었습니다.
-
----
-
-## 🌟 Key Features
-
-- **Project-based Management**: 프로젝트와 사양(Spec) 기반의 계층적 구조로 수많은 VM을 체계적으로 관리합니다.
-- **Offline Bundle Generation**: 폐쇄망 반입을 위해 모든 Python 라이브러리와 바이너리를 포함한 단일 압축 번들을 제작합니다.
-- **Label-based Lifecycle**: 쿠버네티스 라벨을 활용하여 배포된 VM과 관련 리소스(Disk, Network, Secret)를 정확하게 추적하고 원클릭으로 정리합니다.
-- **Flexible CLI Arguments**: 위치 기반 인자와 플래그형 인자를 모두 지원하여 직관적인 사용자 경험을 제공합니다.
-- **Infrastructure as Code**: YAML 기반 설정을 통해 VM의 CPU, Memory, Disk, Network, Cloud-Init을 명세화합니다.
+**v-auto**는 OpenShift Virtualization 환경을 위한 **Infrastructure as Code (IaC)** 자동화 도구입니다.  
+복잡한 VM 설정을 추상화하여, 개발자는 **"스펙 정의(Spec)"**에만 집중하고 운영자는 **"표준 인프라(Infra)"**를 관리할 수 있도록 설계되었습니다.
 
 ---
 
-## 🏗 Directory Structure
+## 📚 문서 가이드 (Documentation)
 
+당신의 역할(Role)에 맞는 가이드를 선택하세요.
+
+### 👩‍💻 [사용자 가이드 (DOCS_USER.md)](DOCS_USER.md)
+**"저는 개발자입니다. VM을 빨리 띄워서 서비스를 올리고 싶어요."**
+*   따라하기 쉬운 **5분 퀵스타트**
+*   내 서버 정의하는 법 (`specs/*.yaml`)
+*   배포, 상태 확인, 삭제 명령어
+
+### 👷 [인프라 운영 가이드 (DOCS_INFRA.md)](DOCS_INFRA.md)
+**"저는 플랫폼 관리자입니다. 네트워크와 스토리지 표준을 잡아야 해요."**
+*   인프라 디렉토리 구조 (`infrastructure/`)
+*   네트워크/이미지 카탈로그 정의법
+*   보안 정책 및 템플릿 관리
+
+---
+
+## 🌟 v2.0 주요 변경 사항 (New!)
+
+*   **📂 구조 분리**: `projects/`(사용자)와 `infrastructure/`(운영자) 폴더가 완벽히 분리되었습니다.
+*   **📝 명시적 인스턴스**: 모호한 `replicas` 대신 `instances` 리스트로 IP를 명확히 관리합니다.
+*   **🔒 보안 강화**: 비밀번호 자동 해싱 및 관리자 백도어 키 자동 주입 기능이 추가되었습니다.
+*   **🤖 네트워크 자동화**: 게이트웨이, DNS 등 복잡한 설정이 자동 주입됩니다.
+
+---
+
+## 🏗 디렉토리 구조
 ```text
 v-auto/
-├── vm_manager.py        # 핵심 실행 스크립트
-├── projects/            # 프로젝트별 설정 공간
-│   └── [project_name]/
-│       ├── config.yaml  # 프로젝트 공통 설정 (Namespace, Auth 등)
-│       └── specs/       # VM 사양 정의서 (.yaml)
-├── templates/           # K8s 리소스 (VM, DV, NAD 등) Jinja2 템플릿
-└── packages/            # 오프라인용 Python 의존성 (.whl)
-```
-
----
-
-## 📖 Documentation & Guides
-
-도구를 처음 사용하신다면 아래 순서대로 읽어보시는 것을 권장합니다:
-
-1.  **[기술 마스터 매뉴얼 (USER_GUIDE.md)](USER_GUIDE.md)**: **(필독)** YAML 작성법, CLI 옵션 명세, 실무 예제 및 기술 로직이 총망라된 통합 가이드.
-2.  **[폐쇄망 반입 및 설치 가이드 (BASTION_TEST_GUIDE.md)](BASTION_TEST_GUIDE.md)**: 번들링부터 현장 설치까지의 절차.
-
----
-
-## 🚀 5분 완성 퀵스타트
-
-### 1단계: 프로젝트 준비
-```bash
-# 기본 제공되는 opasnet 프로젝트 예시 확인
-ls projects/opasnet/specs/web.yaml
-```
-
-### 2단계: VM 배포 (Review 포함)
-```bash
-# 툴이 설정을 검토하고 대상을 보여줍니다. (y/n 확인 절차 포함)
-python3 vm_manager.py opasnet web deploy
-```
-
-### 3단계: 상태 확인 및 삭제
-```bash
-# 배포된 VM 리스트 및 상태 확인 (IP, 이벤트 정보 포함)
-python3 vm_manager.py opasnet web status
-
-# 전체 리소스 안전하게 정리
-python3 vm_manager.py opasnet web delete
+├── DOCS_USER.md          # 👈 개발자는 이것만 보세요!
+├── DOCS_INFRA.md         # 👈 운영자는 이것을 보세요.
+├── vm_manager.py         # 실행 툴 (건드리지 마세요)
+├── projects/             # [사용자 영역] VM 스펙 정의
+│   └── opasnet/
+├── infrastructure/       # [운영자 영역] 네트워크/이미지 정의
+└── ...
 ```
 
 ---
