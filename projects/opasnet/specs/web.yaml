@@ -1,4 +1,4 @@
-# [Integrated Spec File v1.2]
+# [Integrated Spec File v1.3]
 # Now includes infrastructure definitions directly.
 
 infrastructure:
@@ -13,6 +13,15 @@ infrastructure:
         range: 10.215.100.0/24
         gateway: 10.215.100.1
       dns: [8.8.8.8]
+      
+    storage:
+      bridge: br-storage
+      nad_name: br-storage-net
+      ipam:
+        type: whereabouts
+        range: 192.168.10.0/24
+        # Storage network usually isolates traffic, no gateway by default
+      dns: []
 
   images:
     ubuntu-22.04:
@@ -25,8 +34,7 @@ common:
   image: "ubuntu-22.04"
   cpu: 1 # Default from config is 1, but we can be explicit
   memory: 1Gi
-  network: default # Was implictly using the default network
-
+  # network: default  <-- Removed generic default, using explicit lists
 
 cloud_init: |
   #cloud-config
@@ -52,16 +60,35 @@ cloud_init: |
         network:
           version: 2
           ethernets:
-            # Manual Network Configuration
-            # enp2s0 corresponds to the 'default' network (1st Nic after pod-net)
-            enp2s0:
+            {% for iface in interfaces %}
+            {% if iface.type != 'pod' and iface.ipam.addresses %}
+            # Dynamic Interface Config (Prioritize explicit name, else default to enpXs0)
+            {% set if_name = iface.interface_name | default("enp" ~ (loop.index0 + 1) ~ "s0") %}
+            {{ if_name }}:
               dhcp4: no
-              addresses: [{{ interfaces[0].ip }}/24]
+              addresses: [{{ iface.ipam.addresses[0].address }}]
               nameservers:
                 addresses: [8.8.8.8]
+              
+              {% if iface.custom_routes %}
+              # Custom Routes from Instance Data
               routes:
-                - to: default
+                {% for r in iface.custom_routes %}
+                - to: {{ r.to }}
+                  via: {{ r.via }}
+                {% endfor %}
+              {% elif iface.ipam.gateway %}
+              routes:
+                - to: 0.0.0.0/0
+                  via: {{ iface.ipam.gateway }}
+              {% elif loop.index0 == 1 %}
+              # Default Gateway Assumption on first secondary nic
+              routes:
+                - to: 0.0.0.0/0
                   via: 10.215.100.1
+              {% endif %}
+            {% endif %}
+            {% endfor %}
 
   runcmd:
     - echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf
@@ -81,3 +108,11 @@ instances:
     interfaces:
       - network: default
         ip: 10.215.100.102
+        # Example: Override routes just for this VM
+        custom_routes:
+          - to: 10.200.0.0/16
+            via: 10.215.100.254
+            
+      - network: storage
+        ip: 192.168.10.50
+        interface_name: eth1 # Example: Explicit naming override

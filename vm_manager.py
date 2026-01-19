@@ -337,6 +337,13 @@ def deploy_action(args):
             key = item.get('key')
             prompt_text = item.get('prompt', f"Enter value for '{key}'")
             if context.get(key): continue
+            
+            # Skip interaction in dry-run mode
+            if args.dry_run:
+                print(f"  [Dry-Run] Auto-filling dummy value for '{key}'")
+                context[key] = f"(dry-run-{key})"
+                continue
+                
             while True:
                 val = getpass.getpass(f"{prompt_text}: ")
                 if not val: continue
@@ -477,11 +484,27 @@ def deploy_action(args):
             target_ip = override.get('ip')
             if not net_name or not target_ip: continue
             
-            # Find matching interface in catalog
+            # Find matching interface in current instance list
             match = next((n for n in instance_interfaces if n.get('name') == net_name), None)
+            
             if not match:
-                print(f"[WARNING] Instance {vm_name}: Network '{net_name}' not found in common configuration.")
+                # Not in common/base? Try to find in Catalog and Add it!
+                # infra_config contains {'networks': ..., 'images': ...}
+                networks_catalog = infra_config.get('networks', {})
+                catalog_entry = networks_catalog.get(net_name)
+                
+                if catalog_entry:
+                     new_iface = get_network_config(net_name, networks_catalog)
+                     if new_iface:
+                         instance_interfaces.append(new_iface)
+                         match = new_iface
+            
+            if not match:
+                print(f"[WARNING] Instance {vm_name}: Network '{net_name}' not found in infrastructure catalog.")
                 continue
+
+            # Merge any extra config from override (e.g. custom routes, mtu)
+            match.update(override)
 
             # Inject Static IP into NAD
             subnet_cidr = match.get('ipam', {}).get('range')
