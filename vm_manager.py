@@ -59,11 +59,23 @@ def load_yaml(path):
     with open(path, 'r') as f:
         return yaml.safe_load(f)
 
-def load_infrastructure_config():
-    """Loads all infrastructure definitions."""
-    networks = load_yaml(os.path.join(INFRA_DIR, 'networks.yaml'))
-    images = load_yaml(os.path.join(INFRA_DIR, 'images.yaml'))
-    storage = load_yaml(os.path.join(INFRA_DIR, 'storage.yaml'))
+def load_infrastructure_config(project_name):
+    """
+    Loads infrastructure definitions from Local Project Directory.
+    Path: projects/<project>/infrastructure/*.yaml
+    """
+    project_infra_dir = os.path.join(PROJECTS_DIR, project_name, 'infrastructure')
+    
+    # Check if directory exists
+    if not os.path.exists(project_infra_dir):
+        print(f"[WARNING] Local infrastructure directory not found: {project_infra_dir}")
+        print("          Using defaults (empty). Ensure networks.yaml/images.yaml exist.")
+        return {'networks': {}, 'images': {}, 'storage_profiles': {}}
+
+    networks = load_yaml(os.path.join(project_infra_dir, 'networks.yaml'))
+    images = load_yaml(os.path.join(project_infra_dir, 'images.yaml'))
+    storage = load_yaml(os.path.join(project_infra_dir, 'storage.yaml'))
+    
     return {
         'networks': networks.get('networks', {}),
         'images': images.get('images', {}),
@@ -261,7 +273,7 @@ def deploy_action(args):
     
     print(f"Loading configuration for Project: {project}, Spec: {spec}...")
     context = load_config(project, spec)
-    infra_config = load_infrastructure_config()
+    infra_config = load_infrastructure_config(project)
     
     # --- Interactive Inputs (Auth) ---
     # Discover passwords from the common cloud-init context
