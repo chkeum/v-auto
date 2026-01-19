@@ -59,28 +59,43 @@ def load_yaml(path):
     with open(path, 'r') as f:
         return yaml.safe_load(f)
 
-def load_infrastructure_config(project_name):
+def load_infrastructure_config(project_name, spec_context=None):
     """
-    Loads infrastructure definitions from Local Project Directory.
-    Path: projects/<project>/infrastructure/*.yaml
+    Loads infrastructure definitions.
+    Priority 1: defined in Spec file (context['infrastructure'])
+    Priority 2: defined in Project Infrastructure Directory (projects/<project>/infrastructure/*.yaml)
     """
+    # 1. Start with Project-Level Files (Base)
     project_infra_dir = os.path.join(PROJECTS_DIR, project_name, 'infrastructure')
     
-    # Check if directory exists
-    if not os.path.exists(project_infra_dir):
-        print(f"[WARNING] Local infrastructure directory not found: {project_infra_dir}")
-        print("          Using defaults (empty). Ensure networks.yaml/images.yaml exist.")
-        return {'networks': {}, 'images': {}, 'storage_profiles': {}}
-
-    networks = load_yaml(os.path.join(project_infra_dir, 'networks.yaml'))
-    images = load_yaml(os.path.join(project_infra_dir, 'images.yaml'))
-    storage = load_yaml(os.path.join(project_infra_dir, 'storage.yaml'))
-    
-    return {
-        'networks': networks.get('networks', {}),
-        'images': images.get('images', {}),
-        'storage_profiles': storage.get('storage_profiles', {})
+    infra = {
+        'networks': {},
+        'images': {},
+        'storage_profiles': {}
     }
+
+    if os.path.exists(project_infra_dir):
+        infra['networks'] = load_yaml(os.path.join(project_infra_dir, 'networks.yaml')).get('networks', {})
+        infra['images'] = load_yaml(os.path.join(project_infra_dir, 'images.yaml')).get('images', {})
+        infra['storage_profiles'] = load_yaml(os.path.join(project_infra_dir, 'storage.yaml')).get('storage_profiles', {})
+        
+    # 2. Override/Merge with Spec-Level Definitions
+    if spec_context and 'infrastructure' in spec_context:
+        spec_infra = spec_context['infrastructure']
+        
+        # Merge Networks
+        if 'networks' in spec_infra:
+            infra['networks'].update(spec_infra['networks'])
+            
+        # Merge Images
+        if 'images' in spec_infra:
+            infra['images'].update(spec_infra['images'])
+            
+        # Merge Storage
+        if 'storage_profiles' in spec_infra:
+            infra['storage_profiles'].update(spec_infra['storage_profiles'])
+            
+    return infra
 
 def load_config(project_name, spec_name):
     """
@@ -115,6 +130,10 @@ def load_config(project_name, spec_name):
     # Always try to load cloud_init from root if not already in context
     if 'cloud_init' in spec_conf:
         context['cloud_init'] = spec_conf['cloud_init']
+        
+    # Always try to load infrastructure from root
+    if 'infrastructure' in spec_conf:
+        context['infrastructure'] = spec_conf['infrastructure']
     
     # Handle Environment Variables in Auth
     if 'auth' in context:
@@ -275,7 +294,7 @@ def deploy_action(args):
     
     print(f"Loading configuration for Project: {project}, Spec: {spec}...")
     context = load_config(project, spec)
-    infra_config = load_infrastructure_config(project)
+    infra_config = load_infrastructure_config(project, context)
     
     # --- Interactive Inputs (Auth) ---
     # Discover passwords from the common cloud-init context
@@ -809,7 +828,7 @@ def inspect_action(args):
 
     # 2. Load Infrastructure
     print("-" * 60)
-    infra = load_infrastructure_config(project)
+    infra = load_infrastructure_config(project, context)
     
     print(f" [2] Infrastructure Catalog (projects/{project}/infrastructure/)")
     

@@ -1,3 +1,25 @@
+# [Integrated Spec File v1.1]
+# Now includes infrastructure definitions directly.
+
+infrastructure:
+  networks:
+    pod-net:
+      type: pod
+    default:
+      bridge: br-virt
+      nad_name: br-virt-net
+      ipam:
+        type: whereabouts
+        range: 10.215.100.0/24
+        gateway: 10.215.100.1
+      dns: [8.8.8.8]
+
+  images:
+    ubuntu-22.04:
+      url: "http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2"
+      min_cpu: 1
+      min_mem: 1Gi
+
 # Common Configuration
 common:
   image: "ubuntu-22.04"
@@ -19,7 +41,7 @@ cloud_init: |
       shell: /bin/bash
     
     - name: dev-user
-      passwd: "{{ dev_password }}"
+      passwd: "{{ dev_password | hash_password }}"
       groups: [wheel]
       sudo: ALL=(ALL) NOPASSWD:ALL
       shell: /bin/bash
@@ -47,3 +69,5 @@ cloud_init: |
 instances:
   - name: web-01
     ip: 10.215.100.101
+  - name: web-02
+    ip: 10.215.100.102

@@ -1,5 +1,0 @@
-storage_profiles:
-  default:
-    storage_class: local-sc-test
-    access_mode: ReadWriteOnce
-    disk_size: 20Gi

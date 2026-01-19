@@ -45,11 +45,30 @@ python3 vm_manager.py opasnet web delete
 아래 내용을 복사해서 쓰세요.
 
 ```yaml
+# [0] 인프라 정의 (Infrastructure)
+# 네트워크와 이미지를 여기서 직접 정의합니다. (All-in-One Spec)
+infrastructure:
+  networks:
+    default:
+      bridge: br-virt
+      nad_name: br-virt-net
+      ipam:
+        type: whereabouts
+        range: 10.215.100.0/24
+        gateway: 10.215.100.1
+      dns: [8.8.8.8]
+
+  images:
+    ubuntu-22.04:
+      url: "http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2"
+      min_cpu: 1
+      min_mem: 1Gi
+
 # [1] 공통 스펙 (Common Configuration)
 # 이 파일에 정의된 모든 VM이 공유하는 설정입니다.
 common:
-  image: "ubuntu-22.04"     # OS 이미지 (인프라 팀 제공)
-  network: svc-net          # 네트워크 망 이름 (인프라 팀 제공)
+  image: "ubuntu-22.04"     # 위에서 정의한 이미지 참조
+  network: default          # 위에서 정의한 네트워크 참조
   cpu: 2                    # 기본 CPU 코어 수
   memory: 4Gi               # 기본 메모리 크기
   disk_size: 20Gi           # 기본 디스크 크기
