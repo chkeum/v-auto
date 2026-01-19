@@ -22,10 +22,9 @@ EXCLUDES=(
     "${REPO_NAME}/${RELEASE_DIR}"
     "${REPO_NAME}/.vscode"
     "${REPO_NAME}/.idea"
-    "${REPO_NAME}/*.sh"
-    "${REPO_NAME}/*.md"
     "*/__pycache__"
     "*.DS_Store"
+    # Note: .sh scripts and .md docs are now INCLUDED in the bundle
 )
 
 # 부모 디렉토리로 이동하여 압축 수행
