@@ -215,7 +215,7 @@ def discover_password_inputs(context):
         username = name_match.group(1).strip()
         
         # Look for password/passwd key in this specific user block, allowing pipe filters
-        pass_match = re.search(r'^\s*pass(?:wd|word):\s*[\'"]?\{\{\s*([\w]+)(?:\|[^}]+)?\s*\}\}[\'"]?', block, re.MULTILINE)
+        pass_match = re.search(r'^\s*pass(?:wd|word):\s*[\'"]?\{\{\s*(\w+).*?\}\}[\'"]?', block, re.MULTILINE)
         if pass_match:
             key = pass_match.group(1).strip()
             if key not in seen_keys:
