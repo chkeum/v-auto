@@ -105,3 +105,75 @@ A. `--target` 옵션을 쓰세요. 나머지는 건드리지 않고 딱 걔만 �
 ```bash
 python3 vm_manager.py opasnet web deploy --target web-02
 ```
+
+---
+
+## 📸 부록: 실제 실행 예시 (Appendix)
+
+다음은 실제 운영 환경에서 `delete`, `deploy`, `status` 명령어를 연속으로 수행한 결과 로그입니다.
+
+### 1️⃣ 삭제 (Cleanup)
+```text
+$ python3 vm_manager.py opasnet web delete
+Gathering resources for deletion in namespace 'vm-opasnet'...
+Are you sure you want to proceed with deletion? [y/N]: y
+Starting deletion process...
+  [SUCCESS] Managed resources deleted.
+[OK] Cleanup complete for Spec 'web'.
+```
+
+### 2️⃣ 배포 (Deploy) - v2.0
+```text
+$ python3 vm_manager.py opasnet web deploy --yes
+Loading configuration for Project: opasnet, Spec: web...
+
+==================================================
+ [ Deployment Configuration Summary (v2.0) ] 
+==================================================
+ Project   : opasnet
+ Spec      : web
+ Namespace : vm-opasnet
+ Instances : 1
+   - web-01 (IP: 10.215.100.101)
+--------------------------------------------------
+ Base Interfaces (Infra Managed):
+  NIC 0: Type=multus, NAD=br-virt-net, Subnet=10.215.100.0/24
+==================================================
+
+    [Net-Inject] web-01: Static IP 10.215.100.101 on injected NAD web-01-br-virt-net
+
+>>> Preparing Instance: web-01
+Applying resources for web-01...
+--> web-01 Deployed.
+
+==================================================
+ [ Final Status Summary ]
+==================================================
+1. Managed Virtual Machines (Health & Power)
+   - web-01               Running                -         true
+```
+
+### 3️⃣ 상태 확인 (Status)
+```text
+$ python3 vm_manager.py opasnet web status
+
+[ Detailed Status Diagnostic: opasnet/web ]
+Target Namespace: vm-opasnet
+====================================================================================================
+
+1. Managed Virtual Machines (Health & Power)
+----------------------------------------------------------------------------------------------------
+NAME                    STATUS                 READY     RUNNING
+web-01                  Running                True      true
+
+2. Active Runtime & IP Addresses (VMI / Pod)
+----------------------------------------------------------------------------------------------------
+NAME                    IP                  NODE
+web-01                  10.215.100.101      worker-1.ocp.local
+
+3. Storage & Disk Provisioning (DataVolumes / PVC)
+----------------------------------------------------------------------------------------------------
+NAME                    PHASE       PROGRESS    ACCESS-MODES
+web-01-root-disk        Succeeded   100.0%      [ReadWriteOnce]
+====================================================================================================
+```

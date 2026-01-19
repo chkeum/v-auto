@@ -393,9 +393,10 @@ def deploy_action(args):
         print(f"  NIC {i}: Type={net_type}, NAD={nad_name}, Subnet={net.get('ipam', {}).get('range', 'N/A')}")
     print("="*50 + "\n")
     
-    if input("Proceed with dry-run/review? [Y/n]: ").lower() == 'n':
-        print("Cancelled.")
-        return
+    if not args.yes:
+        if input("Proceed with dry-run/review? [Y/n]: ").lower() == 'n':
+            print("Cancelled.")
+            return
 
     # --- Ensure Namespace ---
     ensure_namespace(namespace)
@@ -475,8 +476,12 @@ def deploy_action(args):
             print(f"\n--- Resource: {kind} / {m_name} ---")
             print(yaml.dump(m))
             
-        # Confirm
-        ans = input(f"\nCreate resources for {vm_name}? [y/N/q(uit)]: ").lower()
+        if args.yes:
+            ans = 'y'
+        else:
+            # Confirm
+            ans = input(f"\nCreate resources for {vm_name}? [y/N/q(uit)]: ").lower()
+        
         if ans == 'q': return
         if ans != 'y': 
             print(f"Skipping {vm_name}."); continue
@@ -785,6 +790,8 @@ Examples:
                            help="Override the default replica count defined in the spec YAML")
     group_opt.add_argument('--target', 
                            help="Specific VM instance name for granular action (e.g. web-02)")
+    group_opt.add_argument('--yes', '-y', action='store_true',
+                           help="Skip interactive confirmations (Automated mode)")
     
     args = parser.parse_args()
     
