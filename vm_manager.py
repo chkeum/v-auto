@@ -84,34 +84,32 @@ def load_infrastructure_config(project_name):
 
 def load_config(project_name, spec_name):
     """
-    Loads and merges configuration (v2.0):
-    1. Project Config (projects/<project>/config.yaml) - Project defaults
-    2. VM Spec (projects/<project>/specs/<spec>.yaml) - v2 spec with 'common' and 'instances'
+    Loads configuration (v1.0 Convention):
+    1. Defaults (Namespace=vm-{project}, CPU=2, Mem=4Gi)
+    2. VM Spec (projects/<project>/specs/<spec>.yaml) - Overrides defaults
     """
-    project_path = os.path.join(PROJECTS_DIR, project_name, 'config.yaml')
     spec_path = os.path.join(PROJECTS_DIR, project_name, 'specs', f"{spec_name}.yaml")
     
-    if not os.path.exists(project_path):
-        print(f"Error: Project config not found at {project_path}")
-        sys.exit(1)
     if not os.path.exists(spec_path):
         print(f"Error: VM Spec not found at {spec_path}")
         sys.exit(1)
 
-    proj_conf = load_yaml(project_path)
     spec_conf = load_yaml(spec_path)
     
-    # Context merging
-    context = {}
-    context.update(proj_conf) 
+    # 1. Convention Defaults
+    context = {
+        'namespace': f"vm-{project_name}",  # Convention: vm-<project>
+        'cpu': 2,
+        'memory': "4Gi",
+        'disk_size': "50Gi",
+        'auth': {} # Default empty, triggers interactive prompt if needed
+    }
     
-    # In v2, we expect a 'common' block in the spec, or we fallback to root values for v1 compat
+    # 2. Spec Overrides
     if 'common' in spec_conf:
         context.update(spec_conf['common'])
-        # Also preserve the 'instances' list in the context
         context['instances'] = spec_conf.get('instances', [])
     else:
-        # Legacy v1 fallback or direct overrides
         context.update(spec_conf)
     
     # Handle Environment Variables in Auth

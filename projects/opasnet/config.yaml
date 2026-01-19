@@ -1,8 +1,0 @@
-namespace: vm-opasnet
-
-
-# Project Defaults
-
-# Default Resources
-cpu: 1
-memory: 1Gi
