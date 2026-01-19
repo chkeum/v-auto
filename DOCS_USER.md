@@ -20,7 +20,8 @@ python3 vm_manager.py opasnet web inspect
 ```bash
 python3 vm_manager.py opasnet web deploy
 ```
-> **팁**: 실행하면 비밀번호를 물어봅니다. 배포할 VM의 관리자 `admin` 계정 비밀번호를 입력하세요.
+> **팁 1**: 실행하면 비밀번호를 물어봅니다. 배포할 VM의 관리자 `admin` 계정 비밀번호를 입력하세요.
+> **팁 2**: `--dry-run` 옵션을 붙이면 실제로 배포하지 않고, 생성될 YAML 파일(Template 결과)만 출력해줍니다.
 
 ### 3️⃣ 확인 (Status)
 "내 서버 잘 떴니? IP는 뭐야?"

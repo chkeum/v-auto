@@ -111,6 +111,10 @@ def load_config(project_name, spec_name):
         context['instances'] = spec_conf.get('instances', [])
     else:
         context.update(spec_conf)
+        
+    # Always try to load cloud_init from root if not already in context
+    if 'cloud_init' in spec_conf:
+        context['cloud_init'] = spec_conf['cloud_init']
     
     # Handle Environment Variables in Auth
     if 'auth' in context:
@@ -403,13 +407,14 @@ def deploy_action(args):
         print(f"  NIC {i}: Type={net_type}, NAD={nad_name}, Subnet={net.get('ipam', {}).get('range', 'N/A')}")
     print("="*50 + "\n")
     
-    if not args.yes:
+    if not args.yes and not args.dry_run:
         if input("Proceed with dry-run/review? [Y/n]: ").lower() == 'n':
             print("Cancelled.")
             return
 
     # --- Ensure Namespace ---
-    ensure_namespace(namespace)
+    if not args.dry_run:
+        ensure_namespace(namespace)
 
     # --- Instance Loop ---
     for inst in instances:
@@ -486,6 +491,10 @@ def deploy_action(args):
             print(f"\n--- Resource: {kind} / {m_name} ---")
             print(yaml.dump(m))
             
+        if args.dry_run:
+            print(f" [Dry-Run] Skipping resource creation for {vm_name}.")
+            continue
+
         if args.yes:
             ans = 'y'
         else:
@@ -765,10 +774,35 @@ def inspect_action(args):
         context = load_config(project, spec)
         print(f" [1] Effective Context (Namespace: {context.get('namespace')})")
         print(f"     - Resources: CPU={context.get('cpu')}, Mem={context.get('memory')}, Disk={context.get('disk_size')}")
-        print(f"     - Auth: User={context.get('auth', {}).get('username', 'N/A')}")
         print(f"     - Instances ({len(context.get('instances', []))}):")
         for inst in context.get('instances', []):
             print(f"       * {inst['name']} (IP: {inst.get('ip', 'Auto')})")
+            
+        # Cloud-Init Summary
+        ci_raw = context.get('cloud_init', '')
+        if ci_raw:
+            print(f"     - Cloud-Init (Summary):")
+            try:
+                # Attempt to parse YAML to show details
+                ci_data = yaml.safe_load(ci_raw)
+                
+                # Users
+                users = ci_data.get('users', [])
+                user_names = [u.get('name', 'unknown') for u in users]
+                print(f"       * Users: {', '.join(user_names)}")
+                
+                # Packages
+                pkgs = ci_data.get('packages', [])
+                if pkgs:
+                    print(f"       * Packages: {len(pkgs)} items")
+                
+                # RunCmd
+                cmds = ci_data.get('runcmd', [])
+                if cmds:
+                    print(f"       * RunCmd: {len(cmds)} commands")
+            except:
+                print(f"       * (Template content detected, raw size: {len(ci_raw)} bytes)")
+                
     except Exception as e:
         print(f" [ERROR] Failed to load spec: {e}")
         return
@@ -785,7 +819,9 @@ def inspect_action(args):
         print("       (None defined. Create networks.yaml to add)")
     for name, details in nets.items():
         # Short summary of network
-        nads = details.get('nad', 'N/A')
+        nads = details.get('nad_name', details.get('nad', 'N/A'))
+        if details.get('type') == 'pod':
+            nads = '(Pod Network)'
         print(f"       * {name:<15} -> NAD: {nads}")
 
     imgs = infra.get('images', {})
@@ -793,8 +829,13 @@ def inspect_action(args):
     if not imgs:
         print("       (None defined. Create images.yaml to add)")
     for name, details in imgs.items():
-        pvc = details.get('pvc_name', 'N/A')
-        print(f"       * {name:<15} -> PVC: {pvc}")
+        src = details.get('pvc_name')
+        if not src:
+            src = details.get('url', 'N/A') # Show URL if PVC not found
+        else:
+            src = f"PVC:{src}"
+            
+        print(f"       * {name:<15} -> Source: {src}")
         
     print("=" * 60)
     print("Ready to deploy? Run with 'deploy' action.\n")
@@ -849,6 +890,8 @@ Examples:
                            help="Specific VM instance name for granular action (e.g. web-02)")
     group_opt.add_argument('--yes', '-y', action='store_true',
                            help="Skip interactive confirmations (Automated mode)")
+    group_opt.add_argument('--dry-run', action='store_true',
+                           help="Render manifests without applying them")
     
     args = parser.parse_args()
     
