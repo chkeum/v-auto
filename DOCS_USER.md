@@ -9,20 +9,26 @@
 
 터미널에서 바로 따라 해보세요.
 
-### 1️⃣ 배포 (Deploy)
+### 1️⃣ 설정 확인 (Inspect)
+"내 서버가 어떻게 배포될지 미리 보고 싶어."
+```bash
+python3 vm_manager.py opasnet web inspect
+```
+
+### 2️⃣ 배포 (Deploy)
 "opasnet 프로젝트의 web 스펙을 배포해줘."
 ```bash
 python3 vm_manager.py opasnet web deploy
 ```
 > **팁**: 실행하면 비밀번호를 물어봅니다. 배포할 VM의 관리자 `admin` 계정 비밀번호를 입력하세요.
 
-### 2️⃣ 확인 (Status)
+### 3️⃣ 확인 (Status)
 "내 서버 잘 떴니? IP는 뭐야?"
 ```bash
 python3 vm_manager.py opasnet web status
 ```
 
-### 3️⃣ 삭제 (Delete)
+### 4️⃣ 삭제 (Delete)
 "이제 필요 없어. 다 지워줘."
 ```bash
 python3 vm_manager.py opasnet web delete

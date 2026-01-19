@@ -752,6 +752,53 @@ def list_action(args):
     status_action(args)
 
 
+def inspect_action(args):
+    """Prints the effective configuration for the project/spec."""
+    project = args.project
+    spec = args.spec
+    
+    print(f"\nExample: Inspecting Config for [{project}/{spec}]")
+    print("=" * 60)
+    
+    # 1. Load Context (Convention + Spec)
+    try:
+        context = load_config(project, spec)
+        print(f" [1] Effective Context (Namespace: {context.get('namespace')})")
+        print(f"     - Resources: CPU={context.get('cpu')}, Mem={context.get('memory')}, Disk={context.get('disk_size')}")
+        print(f"     - Auth: User={context.get('auth', {}).get('username', 'N/A')}")
+        print(f"     - Instances ({len(context.get('instances', []))}):")
+        for inst in context.get('instances', []):
+            print(f"       * {inst['name']} (IP: {inst.get('ip', 'Auto')})")
+    except Exception as e:
+        print(f" [ERROR] Failed to load spec: {e}")
+        return
+
+    # 2. Load Infrastructure
+    print("-" * 60)
+    infra = load_infrastructure_config(project)
+    
+    print(f" [2] Infrastructure Catalog (projects/{project}/infrastructure/)")
+    
+    nets = infra.get('networks', {})
+    print(f"     - Networks ({len(nets)}):")
+    if not nets:
+        print("       (None defined. Create networks.yaml to add)")
+    for name, details in nets.items():
+        # Short summary of network
+        nads = details.get('nad', 'N/A')
+        print(f"       * {name:<15} -> NAD: {nads}")
+
+    imgs = infra.get('images', {})
+    print(f"     - Images ({len(imgs)}):")
+    if not imgs:
+        print("       (None defined. Create images.yaml to add)")
+    for name, details in imgs.items():
+        pvc = details.get('pvc_name', 'N/A')
+        print(f"       * {name:<15} -> PVC: {pvc}")
+        
+    print("=" * 60)
+    print("Ready to deploy? Run with 'deploy' action.\n")
+
 def main():
     parser = argparse.ArgumentParser(
         description="v-auto: High-Level OpenShift Virtualization Manager",
@@ -792,8 +839,8 @@ Examples:
     group.add_argument('--spec', dest='spec_flag', 
                         help="VM specification file name in 'projects/[project]/specs/' (without .yaml)")
     group.add_argument('--action', dest='action_flag', 
-                        choices=['deploy', 'delete', 'status'], 
-                        help="Lifecycle action: 'deploy' (create), 'delete' (cleanup), 'status' (show health)")
+                        choices=['deploy', 'delete', 'status', 'inspect'], 
+                        help="Lifecycle action: 'deploy', 'delete', 'status', 'inspect'")
     
     group_opt = parser.add_argument_group('Optional Overrides')
     group_opt.add_argument('--replicas', type=int, 
@@ -811,7 +858,7 @@ Examples:
     action = args.action_flag
     
     # Pre-scan positional args for action keywords to avoid mis-mapping
-    action_keywords = ['deploy', 'delete', 'list', 'status']
+    action_keywords = ['deploy', 'delete', 'list', 'status', 'inspect']
     for p in args.args_pos:
         if p in action_keywords and not action:
             action = p
@@ -829,7 +876,7 @@ Examples:
     missing = []
     if not project: missing.append("project (e.g. opasnet)")
     if not spec: missing.append("spec (e.g. web)")
-    if not action: missing.append("action (deploy, delete, status)")
+    if not action: missing.append("action (deploy, delete, status, inspect)")
 
     if missing:
         parser.print_usage()
@@ -857,6 +904,8 @@ Examples:
         delete_action(args)
     elif args.action in ['list', 'status']:
         list_action(args)
+    elif args.action == 'inspect':
+        inspect_action(args)
 
 if __name__ == '__main__':
     main()
