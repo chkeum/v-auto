@@ -40,16 +40,14 @@ cloud_init: |
   #cloud-config
   ssh_pwauth: True
   users:
-    - name: opasnet-admin
-      passwd: "{{ password | hash_password }}"
-      ssh_authorized_keys:
-        - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDEvFiws1NEVfzAShpTwpB1VxiLEiGQ7rLB3kNor2alwUFnTjOb9zQkbqVxCNmWbde4XzkfJqs5n3wIrzukOKomqbBJ1vFMej6I0CJj6JHc3a1WNG4RGs8sWZG/RbcH1Qsp5Rwzj38gppuARlonHZnVyfBsIdJSYtTmEmeO/szLK1K+vSsO8kzkveV7lXEEI3kXOUpK3X0SJS5dPK0lPCedvlFVGPjQvlA8n4g1OFhSOe/tprx47Rl/E0/oeZte5LUZkJkru9AMW9l2MGv2mgV8/xZCwoL1QVACMBC14VkS/Ac3blICMTD39MilQ3d8YLFaYusom5xyikY/65oT1YSKKYPSfxj5nNdhYsoFVAtjcCLYI6KJGhwroKND0l7ThxmF6lNCBUtkJnTrMczk0nSnFEGj/+3RCFRRHWoyauMGQeArNrYjSgS5SYMszsPPOuYLsH79aRsmXf2cJ3E1sS21d5BR5NbO57lENB3b02EuIeZ4znPXhvKUBqNOlljd6oc= core@bastion.chk-ocp.skt.local
+    - name: admin
+      passwd: "{{ admin_password | hash_password }}"
       groups: [wheel]
       sudo: ALL=(ALL) NOPASSWD:ALL
       shell: /bin/bash
     
-    - name: dev-user
-      passwd: "{{ dev_password | hash_password }}"
+    - name: suer
+      passwd: "{{ suser_password | hash_password }}"
       groups: [wheel]
       sudo: ALL=(ALL) NOPASSWD:ALL
       shell: /bin/bash
@@ -57,38 +55,9 @@ cloud_init: |
   write_files:
     - path: /etc/netplan/02-static.yaml
       content: |
-        network:
-          version: 2
-          ethernets:
-            {% for iface in interfaces %}
-            {% if iface.type != 'pod' and iface.ipam.addresses %}
-            # Dynamic Interface Config (Prioritize explicit name, else default to enpXs0)
-            {% set if_name = iface.interface_name | default("enp" ~ (loop.index0 + 1) ~ "s0") %}
-            {{ if_name }}:
-              dhcp4: no
-              addresses: [{{ iface.ipam.addresses[0].address }}]
-              nameservers:
-                addresses: [8.8.8.8]
-              
-              {% if iface.custom_routes %}
-              # Custom Routes from Instance Data
-              routes:
-                {% for r in iface.custom_routes %}
-                - to: {{ r.to }}
-                  via: {{ r.via }}
-                {% endfor %}
-              {% elif iface.ipam.gateway %}
-              routes:
-                - to: 0.0.0.0/0
-                  via: {{ iface.ipam.gateway }}
-              {% elif loop.index0 == 1 %}
-              # Default Gateway Assumption on first secondary nic
-              routes:
-                - to: 0.0.0.0/0
-                  via: 10.215.100.1
-              {% endif %}
-            {% endif %}
-            {% endfor %}
+        {% if network_config %}
+        {{ network_config | to_yaml }}
+        {% endif %}
 
   runcmd:
     - echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf
@@ -100,19 +69,40 @@ cloud_init: |
 # Explicit Instances Definition (Multi-NIC Supported)
 instances:
   - name: web-01
+    # 1. KubeVirt Attachment
     interfaces:
       - network: default
-        ip: 10.215.100.101
-
+    
+    # 2. OS Configuration
+    network_config:
+      network:
+        version: 2
+        ethernets:
+          enp1s0:
+            dhcp4: no
+            addresses: [10.215.100.101/24]
+            gateway4: 10.215.100.1
+                
   - name: web-02
+    # 1. KubeVirt Attachment (Which NADs to plug in?)
     interfaces:
       - network: default
-        ip: 10.215.100.102
-        # Example: Override routes just for this VM
-        custom_routes:
-          - to: 10.200.0.0/16
-            via: 10.215.100.254
-            
       - network: storage
-        ip: 192.168.10.50
-        interface_name: eth1 # Example: Explicit naming override
+    
+    # 2. OS Configuration (Raw Netplan - Full Control)
+    network_config:
+      network:
+        version: 2
+        ethernets:
+          # Nic 0 (Default Network)
+          enp1s0:
+            dhcp4: no
+            addresses: [10.215.100.102/24]
+            routes:
+              - to: 10.200.0.0/16
+                via: 10.215.100.254
+                
+          # Nic 1 (Storage Network)
+          enp2s0:
+            dhcp4: no
+            addresses: [192.168.10.50/24]

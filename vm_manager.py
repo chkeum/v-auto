@@ -134,6 +134,22 @@ def load_config(project_name, spec_name):
     # Always try to load infrastructure from root
     if 'infrastructure' in spec_conf:
         context['infrastructure'] = spec_conf['infrastructure']
+        
+    # Flatten storage config and map for template
+    storage_conf = context.get('storage', {})
+    
+    # Default values
+    context['access_mode'] = 'ReadWriteOnce' 
+    
+    if storage_conf:
+        # access_modes (list) -> access_mode (string) for simple template
+        modes = storage_conf.get('access_modes', [])
+        if modes:
+            context['access_mode'] = modes[0]
+            
+        if 'class' in storage_conf:
+            context['storage_class'] = storage_conf['class']
+        # config.yaml uses 'class', template might expect 'storage_class'
     
     # Handle Environment Variables in Auth
     if 'auth' in context:
@@ -252,6 +268,13 @@ def render_manifests(ctx):
             return crypt.crypt(pwd, crypt.mksalt(crypt.METHOD_SHA512))
         env.filters['hash_password'] = hash_password_filter
         
+        # Add YAML dump filter for raw object injection override
+        def to_yaml_filter(val):
+            # default_flow_style=False ensures block format (lists as - item)
+            # sort_keys=False preserves insertion order if possible (py3.7+)
+            return yaml.dump(val, default_flow_style=False, sort_keys=False).strip()
+        env.filters['to_yaml'] = to_yaml_filter
+        
         rendered_ci = env.from_string(ctx.get('cloud_init', '')).render(ctx)
         secret_context = ctx.copy()
         secret_context['cloud_init_content'] = rendered_ci
@@ -276,6 +299,15 @@ def render_manifests(ctx):
         if 'ipam' in nad_ctx and not isinstance(nad_ctx['ipam'], str):
             import json
             nad_ctx['ipam'] = json.dumps(nad_ctx['ipam'])
+            
+        if 'dns' in nad_ctx:
+            import json
+            # If user provided a list, wrap it in CNI 'nameservers' structure
+            if isinstance(nad_ctx['dns'], list):
+                nad_ctx['dns'] = json.dumps({'nameservers': nad_ctx['dns']})
+            elif not isinstance(nad_ctx['dns'], str):
+                 # Fallback for dict or other non-string
+                 nad_ctx['dns'] = json.dumps(nad_ctx['dns'])
             
         if 'bridge' in net:
              nad = yaml.safe_load(render_template('nad_template.yaml', nad_ctx))
@@ -395,7 +427,7 @@ def deploy_action(args):
         base_interfaces.append(get_network_config(common_net_name, catalog))
     else: 
         # Default fallback
-        base_interfaces.append(catalog.get('default'))
+        base_interfaces.append(get_network_config('default', catalog))
         
     base_interfaces = [n for n in base_interfaces if n]
     if not base_interfaces:
@@ -482,7 +514,9 @@ def deploy_action(args):
         for override in target_interfaces:
             net_name = override.get('network')
             target_ip = override.get('ip')
-            if not net_name or not target_ip: continue
+            
+            # Allow override without IP (L2 mode or implicit Multus)
+            if not net_name: continue
             
             # Find matching interface in current instance list
             match = next((n for n in instance_interfaces if n.get('name') == net_name), None)
@@ -506,9 +540,9 @@ def deploy_action(args):
             # Merge any extra config from override (e.g. custom routes, mtu)
             match.update(override)
 
-            # Inject Static IP into NAD
+            # Inject Static IP into NAD IS ONLY DONE IF IP IS PROVIDED
             subnet_cidr = match.get('ipam', {}).get('range')
-            if subnet_cidr:
+            if target_ip and subnet_cidr:
                 try:
                     network = ipaddress.IPv4Network(subnet_cidr, strict=False)
                     if ipaddress.IPv4Address(target_ip) not in network:

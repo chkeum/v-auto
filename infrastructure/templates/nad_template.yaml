@@ -8,6 +8,11 @@ spec:
       "cniVersion": "0.3.1",
       "name": "{{ nad_name }}",
       "type": "bridge",
-      "bridge": "{{ bridge }}",
-      "ipam": {{ ipam }}
+      "bridge": "{{ bridge }}"
+      {% if ipam %}
+      , "ipam": {{ ipam }}
+      {% endif %}
+      {% if dns %}
+      , "dns": {{ dns }}
+      {% endif %}
     }'
