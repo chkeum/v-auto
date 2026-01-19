@@ -20,7 +20,8 @@ else:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECTS_DIR = os.path.join(BASE_DIR, 'projects')
-TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
+INFRA_DIR = os.path.join(BASE_DIR, 'infrastructure')
+TEMPLATES_DIR = os.path.join(INFRA_DIR, 'templates') 
 
 def run_command(cmd, input_data=None):
     """Executes a shell command and returns stdout."""
@@ -58,11 +59,22 @@ def load_yaml(path):
     with open(path, 'r') as f:
         return yaml.safe_load(f)
 
+def load_infrastructure_config():
+    """Loads all infrastructure definitions."""
+    networks = load_yaml(os.path.join(INFRA_DIR, 'networks.yaml'))
+    images = load_yaml(os.path.join(INFRA_DIR, 'images.yaml'))
+    storage = load_yaml(os.path.join(INFRA_DIR, 'storage.yaml'))
+    return {
+        'networks': networks.get('networks', {}),
+        'images': images.get('images', {}),
+        'storage_profiles': storage.get('storage_profiles', {})
+    }
+
 def load_config(project_name, spec_name):
     """
-    Loads and merges configuration:
-    1. Project Config (projects/<project>/config.yaml)
-    2. VM Spec (projects/<project>/specs/<spec>.yaml)
+    Loads and merges configuration (v2.0):
+    1. Project Config (projects/<project>/config.yaml) - Project defaults
+    2. VM Spec (projects/<project>/specs/<spec>.yaml) - v2 spec with 'common' and 'instances'
     """
     project_path = os.path.join(PROJECTS_DIR, project_name, 'config.yaml')
     spec_path = os.path.join(PROJECTS_DIR, project_name, 'specs', f"{spec_name}.yaml")
@@ -80,7 +92,15 @@ def load_config(project_name, spec_name):
     # Context merging
     context = {}
     context.update(proj_conf) 
-    context.update(spec_conf) # Spec overrides project
+    
+    # In v2, we expect a 'common' block in the spec, or we fallback to root values for v1 compat
+    if 'common' in spec_conf:
+        context.update(spec_conf['common'])
+        # Also preserve the 'instances' list in the context
+        context['instances'] = spec_conf.get('instances', [])
+    else:
+        # Legacy v1 fallback or direct overrides
+        context.update(spec_conf)
     
     # Handle Environment Variables in Auth
     if 'auth' in context:
@@ -132,8 +152,8 @@ def discover_password_inputs(context):
     seen_keys = set()
 
     # 1. chpasswd pattern: 'username:{{ var }}'
-    # Looks for 'user:{{ password_var }}' in chpasswd/list blocks
-    chpasswd_matches = re.findall(r'^\s*([^:\s\-]+):\{\{\s*(\w+)\s*\}\}', raw_ci, re.MULTILINE)
+    # Looks for 'user:{{ password_var }}' (ignoring filters if present, though chpasswd usually takes plain)
+    chpasswd_matches = re.findall(r'^\s*([^:\s\-]+):\{\{\s*([\w]+)(?:\|[^}]+)?\s*\}\}', raw_ci, re.MULTILINE)
     for user, key in chpasswd_matches:
         if key in ['username', 'interface_name', 'static_ip', 'gateway_ip']: continue
         if key not in seen_keys:
@@ -145,9 +165,7 @@ def discover_password_inputs(context):
 
     # 2. users list pattern: 
     #   - name: username
-    #     passwd: {{ var }}
-    # We look for '- name: <user>' and then the next 'pass[wd|word]: {{ <key> }}'
-    # This is a bit more complex with regex, so we'll use a scanning approach or a multi-line regex
+    #     passwd: {{ var | filter }}
     user_blocks = re.split(r'^\s*-\s*name:', raw_ci, flags=re.MULTILINE)
     for block in user_blocks[1:]: # Skip text before the first '- name:'
         # Get the username (first word of the block)
@@ -155,10 +173,10 @@ def discover_password_inputs(context):
         if not name_match: continue
         username = name_match.group(1).strip()
         
-        # Look for password/passwd key in this specific user block
-        pass_match = re.search(r'^\s*pass(?:wd|word):\s*[\'"]?\{\{\s*(\w+)\s*\}\}[\'"]?', block, re.MULTILINE)
+        # Look for password/passwd key in this specific user block, allowing pipe filters
+        pass_match = re.search(r'^\s*pass(?:wd|word):\s*[\'"]?\{\{\s*([\w]+)(?:\|[^}]+)?\s*\}\}[\'"]?', block, re.MULTILINE)
         if pass_match:
-            key = pass_match.group(1)
+            key = pass_match.group(1).strip()
             if key not in seen_keys:
                 discovered.append({
                     'key': key,
@@ -186,6 +204,13 @@ def render_manifests(ctx):
     # 1. Secret (Cloud-Init)
     try:
         env = Environment()
+        # Add password hashing filter
+        import crypt
+        def hash_password_filter(pwd):
+            if not pwd: return ""
+            return crypt.crypt(pwd, crypt.mksalt(crypt.METHOD_SHA512))
+        env.filters['hash_password'] = hash_password_filter
+        
         rendered_ci = env.from_string(ctx.get('cloud_init', '')).render(ctx)
         secret_context = ctx.copy()
         secret_context['cloud_init_content'] = rendered_ci
@@ -233,28 +258,24 @@ def render_manifests(ctx):
 def deploy_action(args):
     project = args.project
     spec = args.spec
-    replicas_arg = args.replicas
     
     print(f"Loading configuration for Project: {project}, Spec: {spec}...")
     context = load_config(project, spec)
+    infra_config = load_infrastructure_config()
     
-    # --- Interactive Inputs ---
-    # 1. Discover from cloud-init (Dynamic Account Detection)
+    # --- Interactive Inputs (Auth) ---
+    # Discover passwords from the common cloud-init context
     discovered = discover_password_inputs(context)
     
-    # 2. explicit inputs from config
+    # explicit inputs (legacy support)
     config_inputs = context.get('inputs', [])
     
-    # 3. Merge: Prioritize discovered prompts if they match a key
     final_inputs = []
     seen_keys = set()
-    
-    # Map discovered for easy lookup
     discovered_map = { d['key']: d['prompt'] for d in discovered }
     
     for item in config_inputs:
         key = item['key']
-        # If we discovered a specific account name for this key, use it
         if key in discovered_map:
             item['prompt'] = discovered_map[key]
         final_inputs.append(item)
@@ -288,41 +309,60 @@ def deploy_action(args):
     if 'password' in context:
         context.setdefault('auth', {})['password'] = context['password']
     
-    # --- Determine Vars ---
-    base_name = context.get('name_prefix', spec)
-    replicas = replicas_arg if replicas_arg else context.get('replicas', 1)
+    # --- Determine Instances ---
+    instances = context.get('instances', [])
+    if not instances:
+        # Fallback to legacy 'replicas' logic if 'instances' not found
+        replicas = args.replicas if args.replicas else context.get('replicas', 1)
+        base_name = context.get('name_prefix', spec)
+        print(f"[INFO] No 'instances' list found. Falling back to legacy replica mode (Count: {replicas})")
+        for i in range(replicas):
+            suffix = f"-{i+1:02d}" if (replicas > 1 or i > 0) else ""
+            instances.append({
+                'name': f"{base_name}{suffix}",
+                # Legacy mode doesn't support explicit static IP per instance here easily
+                # unless we rely on the old auto-calc logic.
+                # For v2 refactor, we encourage 'instances' list.
+            })
+    
     namespace = context.get('namespace', 'default')
     
-    # --- Network Resolution ---
-    # (Same logic as before, simpler lookup)
-    proj_conf = load_yaml(os.path.join(PROJECTS_DIR, project, 'config.yaml'))
-    catalog = proj_conf.get('networks', {})
-    spec_networks = context.get('networks')
-    final_net_list = []
+    # --- Network Resolution (Infra Catalog) ---
+    catalog = infra_config['networks']
     
-    if isinstance(spec_networks, list):
-        for net in spec_networks:
-            final_net_list.append(get_network_config(net, catalog))
-    elif isinstance(spec_networks, dict):
-         final_net_list.append(catalog.get('default'))
-    elif 'network' in context:
-         final_net_list.append(get_network_config(context['network'], catalog))
+    # Resolve the "Common Network" defined in common block
+    # e.g. network: svc-net
+    common_net_name = context.get('network')
+    # Or multiple networks
+    common_networks = context.get('networks', [])
+
+    # We need to construct the base interface list from common config
+    base_interfaces = []
+    
+    if common_networks:
+        if isinstance(common_networks, list):
+            for net in common_networks:
+                base_interfaces.append(get_network_config(net, catalog))
+    elif common_net_name:
+        base_interfaces.append(get_network_config(common_net_name, catalog))
     else: 
-        final_net_list.append(catalog.get('default'))
+        # Default fallback
+        base_interfaces.append(catalog.get('default'))
         
-    final_net_list = [n for n in final_net_list if n]
-    if not final_net_list:
+    base_interfaces = [n for n in base_interfaces if n]
+    if not base_interfaces:
         print("Error: No valid networks resolving."); sys.exit(1)
 
     # --- Configuration Summary ---
     print("\n" + "="*50)
-    print(f" [ Deployment Configuration Summary ] ")
+    print(f" [ Deployment Configuration Summary (v2.0) ] ")
     print("="*50)
     print(f" Project   : {project}")
     print(f" Spec      : {spec}")
     print(f" Namespace : {namespace}")
-    print(f" Replicas  : {replicas}")
-    print(f" Base Name : {base_name}")
+    print(f" Instances : {len(instances)}")
+    for inst in instances:
+        print(f"   - {inst['name']} (IP: {inst.get('ip', 'Auto/DHCP')})")
     
     # Identify users for summary
     users = [d['prompt'].split("'")[1] for d in discovered]
@@ -330,36 +370,29 @@ def deploy_action(args):
         users = [context.get('auth', {}).get('username', 'N/A')]
     print(f" Users     : {', '.join(users)}")
     
-    print(f" Image     : {context.get('image_url', 'N/A')}")
+    # Image Resolution (Infra Catalog)
+    image_key = context.get('image')
+    image_url = context.get('image_url')
+    if image_key and image_key in infra_config['images']:
+        image_info = infra_config['images'][image_key]
+        image_url = image_info['url']
+        # Could also enforce min_cpu/mem here
+        print(f" Image     : {image_key} (Resolved: {image_url})")
+    else:
+        print(f" Image     : {image_url} (Direct URL)")
+    # Store resolved url in context
+    context['image_url'] = image_url
+
     print(f" Disk Size : {context.get('disk_size', 'N/A')}")
     print(f" StorageCls: {context.get('storage_class', 'N/A')}")
     print("-" * 50)
-    print(" Network Interfaces:")
-    for i, net in enumerate(final_net_list):
+    print(" Base Interfaces (Infra Managed):")
+    for i, net in enumerate(base_interfaces):
         net_type = net.get('type', 'multus')
         nad_name = net.get('nad_name', 'N/A')
-        print(f"  NIC {i}: Type={net_type}, NAD={nad_name}")
+        print(f"  NIC {i}: Type={net_type}, NAD={nad_name}, Subnet={net.get('ipam', {}).get('range', 'N/A')}")
     print("="*50 + "\n")
     
-    # --- Targeted Deployment Logic ---
-    indices = range(replicas)
-    if args.target:
-        import re
-        # Support both name-NN and plain name
-        match = re.search(r'^(.*)-(\d+)$', args.target)
-        if match:
-            t_prefix, t_num = match.group(1), int(match.group(2))
-            if t_prefix != base_name:
-                print(f"[ERROR] Target '{args.target}' prefix mismatch. Expected '{base_name}-NN'.")
-                sys.exit(1)
-            indices = [t_num - 1]
-        else:
-            if args.target != base_name:
-                print(f"[ERROR] Target '{args.target}' mismatch. Expected '{base_name}'.")
-                sys.exit(1)
-            indices = [0]
-        print(f" [ INFO ] Targeted deployment: Only '{args.target}' will be processed.")
-
     if input("Proceed with dry-run/review? [Y/n]: ").lower() == 'n':
         print("Cancelled.")
         return
@@ -367,75 +400,71 @@ def deploy_action(args):
     # --- Ensure Namespace ---
     ensure_namespace(namespace)
 
-    # --- Replica Loop ---
-    for i in indices:
-        # Generate suffix: -01, -02 etc. if multiple or if index is high (targeted)
-        suffix = f"-{i+1:02d}" if (replicas > 1 or i > 0) else ""
-        vm_name = f"{base_name}{suffix}"
+    # --- Instance Loop ---
+    for inst in instances:
+        vm_name = inst['name']
         
+        # Target Filtering
+        if args.target and args.target != vm_name:
+            continue
+
         instance_ctx = context.copy()
+        instance_ctx.update(inst) # Override common with instance specific (e.g. cpu, memory)
         instance_ctx['vm_name'] = vm_name
         instance_ctx['project_name'] = project
         instance_ctx['spec_name'] = spec
         
-        # Deep copy interfaces to modify them for this specific instance
-        instance_interfaces = copy.deepcopy(final_net_list)
+        # Determine Interfaces for this instance
+        instance_interfaces = copy.deepcopy(base_interfaces)
         
-        # --- Automated Static IP Calculation ---
-        # If IPAM range is present, we calculate a static IP based on replica index
-        # to ensure consistency between NAD (K8s) and Cloud-Init (VM).
-        for net in instance_interfaces:
-            if 'ipam' in net and 'range' in net['ipam']:
-                try:
-                    cidr = net['ipam']['range']
-                    gateway = net['ipam'].get('gateway')
-                    
-                    # Parse Network
-                    network = ipaddress.IPv4Network(cidr, strict=False)
-                    
-                    # Logic: Start from .100 + index (e.g., 10.215.100.101 for replica 1)
-                    # We assume the network is large enough.
-                    # Verify gateway is not colliding.
-                    
-                    # Calculate target host offset
-                    # 1-indexed loop 'i' counts 0,1. 
-                    # Let's map i=0 -> .101, i=1 -> .102
-                    host_offset = 101 + i 
-                    
-                    target_ip_obj = network.network_address + host_offset
-                    target_ip = str(target_ip_obj)
-                    
-                    # Inject into NAD context (Switch to static IPAM for this instance)
-                    # We override the type to 'static' so the NAD generated forces this IP.
-                    # This replaces 'whereabouts' for this specific instance manifest.
-                    net['ipam']['type'] = 'static'
-                    net['ipam']['addresses'] = [{'address': f"{target_ip}/24"}] # Assuming /24, or derive from CIDR prefix len
-                    # Actually better to derive prefix len
-                    safe_cidr_suffix = str(network.prefixlen)
-                    net['ipam']['addresses'] = [{'address': f"{target_ip}/{safe_cidr_suffix}"}]
-                    # if gateway:
-                    #     net['ipam']['gateway'] = gateway # Commented out as per instruction
-                    # Only add specific routes if needed, avoid default route on secondary NIC
-                    # net['ipam']['routes'] = [{"dst": "0.0.0.0/0", "gw": gateway}]
-                    pass
-                    
-                    # Update NAD name to be instance-specific to avoid conflicts with static IP
-                    orig_nad = net.get('nad_name', 'net')
-                    net['nad_name'] = f"{vm_name}-{orig_nad}"
-                    
-                    # Inject variables for Cloud-Init (Jinja2)
-                    instance_ctx['static_ip'] = f"{target_ip}/{safe_cidr_suffix}"
-                    instance_ctx['gateway_ip'] = gateway
-                    instance_ctx['interface_name'] = 'enp2s0' # Default assumption for 2nd NIC, can make configurable
-                    
-                    print(f"    [Auto-Net] Calculated Static IP: {target_ip} (GW: {gateway}, NAD: {net['nad_name']})")
-                    
-                except Exception as e:
-                    print(f"    [Warning] Failed to calculate static IP: {e}")
+        # --- Network Injection Logic ---
+        # If instance has explicit 'ip', we find the matching interface and inject static IP config
+        target_ip = inst.get('ip')
+        if target_ip:
+            # We assume the first non-pod network is the primary one to set static IP on
+            # Or we could match by network name if provided in 'instances'. 
+            # For simplicity, we apply to the first valid Multus interface found.
+            injected = False
+            for net in instance_interfaces:
+                if net.get('type') == 'pod': continue
+                
+                # Verify IP belongs to subnet
+                subnet_cidr = net.get('ipam', {}).get('range')
+                gateway = net.get('ipam', {}).get('gateway')
+                
+                if subnet_cidr:
+                    try:
+                        network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                        if ipaddress.IPv4Address(target_ip) not in network:
+                            print(f"[WARNING] Instance {vm_name} IP {target_ip} is outside subnet {subnet_cidr}. Ignoring injection.")
+                            continue
+                            
+                        # Correct logic: Inject Static IPAM type
+                        safe_cidr_suffix = str(network.prefixlen)
+                        net['ipam']['type'] = 'static'
+                        net['ipam']['addresses'] = [{'address': f"{target_ip}/{safe_cidr_suffix}"}]
+                        
+                        # Generate Instance-Specific NAD Name
+                        orig_nad = net.get('nad_name', 'net')
+                        net['nad_name'] = f"{vm_name}-{orig_nad}"
+
+                        # Cloud-Init Variables Injection
+                        instance_ctx['static_ip'] = f"{target_ip}/{safe_cidr_suffix}"
+                        instance_ctx['gateway_ip'] = gateway
+                        instance_ctx['interface_name'] = 'enp2s0' # Default assumption
+                        
+                        print(f"    [Net-Inject] {vm_name}: Static IP {target_ip} on injected NAD {net['nad_name']}")
+                        injected = True
+                        break # Only inject one primary IP for now
+                    except Exception as e:
+                        print(f"[ERROR] Invalid IP configuration: {e}")
+            
+            if not injected:
+                 print(f"[WARNING] Could not inject Static IP {target_ip}. No matching subnet found in interfaces.")
 
         instance_ctx['interfaces'] = instance_interfaces
         
-        print(f"\n>>> Preparing Replica {i+1}/{replicas}: {vm_name}")
+        print(f"\n>>> Preparing Instance: {vm_name}")
         manifests = render_manifests(instance_ctx)
         
         # Dry Run Output
@@ -459,7 +488,7 @@ def deploy_action(args):
             apply_k8s_resource(m, namespace, ignore_exists=ignore)
         print(f"--> {vm_name} Deployed.")
 
-    # Show final status after all replicas are processed
+    # Show final status
     print("\n" + "="*50)
     print(" [ Final Status Summary ]")
     print("="*50)

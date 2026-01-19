@@ -1,21 +1,7 @@
 namespace: vm-opasnet
 
 
-networks:
-  pod-net:
-    type: pod
-  default:
-    bridge: br-virt           # 호스트의 브리지 인터페이스 이름
-    nad_name: br-virt-net     # 생성될 NetworkAttachmentDefinition 이름
-    ipam:                     # IP 할당 방식
-      type: whereabouts       # whereabouts: IP 자동 관리 플러그인
-      range: 10.215.100.0/24  # 할당할 IP 대역
-      gateway: 10.215.100.1   # 게이트웨이 주소
-
-# Default Storage Configuration
-disk_size: 20Gi
-storage_class: local-sc-test
-access_mode: ReadWriteOnce
+# Project Defaults
 
 # Default Resources
 cpu: 1

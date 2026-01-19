@@ -1,0 +1,5 @@
+images:
+  ubuntu-22.04:
+    url: "http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2"
+    min_cpu: 1
+    min_mem: 1Gi
