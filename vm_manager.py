@@ -458,9 +458,9 @@ def deploy_action(args):
         if target_ip:
             # We assume the first non-pod network is the primary one to set static IP on
             # Or we could match by network name if provided in 'instances'. 
-            # For simplicity, we apply to the first valid Multus interface found.
+            # We apply to the first valid Multus interface found.
             injected = False
-            for net in instance_interfaces:
+            for idx, net in enumerate(instance_interfaces):
                 if net.get('type') == 'pod': continue
                 
                 # Verify IP belongs to subnet
@@ -486,9 +486,12 @@ def deploy_action(args):
                         # Cloud-Init Variables Injection
                         instance_ctx['static_ip'] = f"{target_ip}/{safe_cidr_suffix}"
                         instance_ctx['gateway_ip'] = gateway
-                        instance_ctx['interface_name'] = 'enp2s0' # Default assumption
                         
-                        print(f"    [Net-Inject] {vm_name}: Static IP {target_ip} on injected NAD {net['nad_name']}")
+                        # Dynamic Interface Name Calculation (VirtIO convention: enp{idx+1}s0)
+                        # nic0 -> enp1s0, nic1 -> enp2s0
+                        instance_ctx['interface_name'] = f'enp{idx+1}s0' 
+                        
+                        print(f"    [Net-Inject] {vm_name}: Static IP {target_ip} on injected NAD {net['nad_name']} (Interface: {instance_ctx['interface_name']})")
                         injected = True
                         break # Only inject one primary IP for now
                     except Exception as e:
