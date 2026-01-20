@@ -62,12 +62,22 @@ graph TD
     Render -->|Generate| NAD
 ```
 
+
 ### 1.3 작업 디렉토리 구조 (`/home/core/v-auto`)
-*   **`vman`**: 실행 스크립트 (모든 명령의 진입점)
-*   **`projects/`**: 프로젝트별 스펙 파일 저장소
-    *   `opasnet/web.yaml`: (예시) Opasnet 프로젝트의 Web 서비스 스펙
-*   **`templates/`**: 리소스 생성용 Jinja2 템플릿 (수정 금지)
-    *   `vm_template.yaml`, `secret_template.yaml` 등
+```text
+/home/core/v-auto/
+├── projects/                  # [프로젝트 저장소]
+│   └── opasnet/
+│       └── web.yaml           # (메인 스펙 파일)
+├── templates/                 # [리소스 템플릿]
+│   ├── vm_template.yaml
+│   ├── datavolume_template.yaml
+│   ├── secret_template.yaml
+│   └── nad_template.yaml
+├── vman                       # [실행 스크립트]
+├── vm_manager.py              # (파이썬 엔진)
+└── DOCS_USER.md               # (본 가이드)
+```
 
 ---
 
