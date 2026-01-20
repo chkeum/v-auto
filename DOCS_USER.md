@@ -27,7 +27,8 @@
 ## 1. 소개 및 아키텍처 (Introduction)
 
 ### 1.1 툴 개요
-`v-auto`는 OpenShift Virtualization 기반의 VM 배포를 **단일 YAML 스펙**으로 자동화하는 도구입니다. 복잡한 K8s 리소스(VirtualMachine, DataVolume, Secret, NAD)를 직접 작성하지 않고, 직관적인 설정 파일 하나로 통합 관리합니다.
+`v-auto`는 OpenShift Virtualization 기반의 **VM Delivery Tool**입니다.
+기술지원팀이 고객의 요청 사항을 **단일 YAML 스펙**으로 정의하면, 복잡한 K8s 리소스(VirtualMachine, DataVolume, Secret, NAD) 생성을 자동화하여 신속하게 VM을 인도(Delivery)합니다.
 
 ### 1.2 시스템 구조
 ```mermaid
