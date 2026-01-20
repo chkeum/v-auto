@@ -138,6 +138,56 @@ A. `--target` 옵션을 쓰세요. 나머지는 건드리지 않고 딱 걔만 �
 
 다음은 실제 운영 환경에서 `delete`, `deploy`, `status` 명령어를 연속으로 수행한 결과 로그입니다.
 
+### 0️⃣ 설정 확인 (Inspect)
+```text
+$ ./vman opasnet web inspect
+
+══════════════════════════════════════════════════════════════════════
+ 🔍  CONFIGURATION INSPECTION REPORT | OPASNET/WEB
+══════════════════════════════════════════════════════════════════════
+
+ [1] PROJECT CONTEXT
+ Namespace            : vm-opasnet
+ Resources Defaults   : CPU=1, MEM=1Gi, Disk=10Gi
+ --------------------------------------------------------------------
+
+ [2] INFRASTRUCTURE CATALOG (Resolved)
+ Networks             :
+       pod-net         [POD   ] NAD: -               Bridge: -            Subnet: -
+       default         [MULTUS] NAD: br-virt-net     Bridge: br-virt      Subnet: -
+       storage         [MULTUS] NAD: br-storage-net  Bridge: br-storage   Subnet: -
+ Images               :
+       ubuntu-22.04    -> http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2
+ --------------------------------------------------------------------
+
+ [3] INSTANCE DEFINITIONS (Total: 2)
+
+   [ INSTANCE: web-01 ]
+       Specs           : Override (500mvCPU / 1Gi)
+       IP Address      :
+           - Auto/DHCP
+       Interfaces      : default
+
+   [ INSTANCE: web-02 ]
+       Specs           : Default (1vCPU/1Gi)
+       IP Address      :
+           - Auto/DHCP
+       Interfaces      : default, storage
+ --------------------------------------------------------------------
+
+ [4] CLOUD-INIT CONFIGURATION (User-Data Template)
+      Users           :
+        - core (Groups: [])
+        - suser (Groups: [])
+      RunCmd          : (4 commands)
+        $ ['sh', '-c', "echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf"]
+        $ ['systemctl', 'restart', 'ssh']
+        $ ['rm', '-f', '/etc/netplan/50-cloud-init.yaml']
+        $ ['netplan', 'apply']
+
+══════════════════════════════════════════════════════════════════════
+```
+
 ### 1️⃣ 삭제 (Cleanup)
 ```text
 $ ./vman opasnet web delete
