@@ -224,23 +224,32 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
       Spec File       : /home/core/v-auto/projects/opasnet/web.yaml
 
 [2] INFRASTRUCTURE CATALOG
-      default   [MULTUS] NAD: br-virt-net   Bridge: br-virt
-      storage   [MULTUS] NAD: br-storage-net   Bridge: br-storage
+      default   [MULTUS] NAD: br-virt-net   Bridge: br-virt   <--- [Infra] 서비스 네트워크 확인
+      storage   [MULTUS] NAD: br-storage-net Bridge: br-storage <--- [Infra] 스토리지 네트워크 확인
 
 [3] INSTANCE & NETWORK CONFIGURATION
   [ INSTANCE: web-01 ]
     Resources       : CPU=500m, Memory=1Gi
     Node Selector   : {'kubernetes.io/hostname': 'worker1'}
     Interfaces      :
-        - Name: nic0 | Network: default
+        - Name: nic0 | Network: default         <--- [Net] 기본 네트워크 연결
     IP Address      :
-        - enp1s0 = 10.215.100.101/24
-          (Cloud-Init Override)
+        - enp1s0 = 10.215.100.101/24            <--- [IP] 고정 IP (Cloud-Init)
+
+  [ INSTANCE: web-02 ]                          <--- [Spec] 두 번째 인스턴스 확인
+    Resources       : CPU=1, Memory=1Gi
+    Node Selector   : {'kubernetes.io/hostname': 'worker2'}
+    Interfaces      :
+        - Name: nic0 | Network: default
+        - Name: nic1 | Network: storage         <--- [Net] 추가 네트워크(스토리지) 연결
+    IP Address      :
+        - enp1s0 = 10.215.100.102/24            <--- [IP] 서비스망 IP
+        - enp2s0 = 192.168.10.50/24             <--- [IP] 스토리지망 IP
 
 [4] CLOUD-INIT CONFIGURATION
       Users           :
-        - core
-        - suser
+        - core        <--- [Auth] 생성될 관리자 계정
+        - suser       <--- [Auth] 생성될 서비스 계정
 ```
 > **Check Point**: 네트워트(`[2]`), IP 주소(`[3]`), 사용자(`[4]`) 정보가 의도한 대로 표시되는지 확인하십시오.
 
@@ -255,10 +264,10 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
 ```text
 [DRY-RUN] Generated Manifest for VirtualMachine: web-01
 apiVersion: kubevirt.io/v1
-kind: VirtualMachine
+kind: VirtualMachine             <--- [DryRun] 생성될 리소스 타입 확인
 metadata:
-  name: web-01
-  namespace: vm-opasnet
+  name: web-01                   <--- [DryRun] 리소스 이름
+  namespace: vm-opasnet          <--- [DryRun] 타겟 네임스페이스
 ...
 (전체 매니페스트 출력)
 ```
@@ -273,8 +282,13 @@ metadata:
 [INFO] Namespace 'vm-opasnet' exists.
 [INFO] Secret 'web-01-cloud-init' created/configured.
 [INFO] DataVolume 'web-01-root-disk' created/configured.
-[INFO] VirtualMachine 'web-01' created/configured.
-[SUCCESS] Deployment/Update completed for web.
+[INFO] VirtualMachine 'web-01' created/configured.    <--- [Flow] web-01 생성 완료
+
+[INFO] Secret 'web-02-cloud-init' created/configured.
+[INFO] DataVolume 'web-02-root-disk' created/configured.
+[INFO] VirtualMachine 'web-02' created/configured.    <--- [Flow] web-02 생성 완료
+
+[SUCCESS] Deployment/Update completed for web.        <--- [Result] 전체 배포 완료
 ```
 
 ### Step 3: 상태 확인 (Status)
@@ -289,13 +303,13 @@ metadata:
 [ v-auto ] VM Service Status : opasnet / web
 ================================================================================
 NAME     NAMESPACE     STATUS    READY   NODE       VMI-IP
-web-01   vm-opasnet    Running   True    worker1    10.215.100.101
+web-01   vm-opasnet    Running   True    worker1    10.215.100.101  <--- [Status] 실행 중인 노드 및 IP
 
 [ Active Runtime Info ]
-  - web-01 : Phase=Running, IP=10.215.100.101, LaunchTime=2026-01-20T11:00:00Z
+  - web-01 : Phase=Running, IP=10.215.100.101, LaunchTime=...       <--- [Detail] 상세 런타임 정보
 
 [ Recent Events ]
-  No warning/error events found in namespace vm-opasnet.
+  No warning/error events found in namespace vm-opasnet.            <--- [Event] 최근 에러/경고 로그
 ```
 > **Check Point**: `STATUS`가 `Running`이고 `VMI-IP`가 정상적으로 할당되었는지 확인하십시오.
 
@@ -311,14 +325,20 @@ web-01   vm-opasnet    Running   True    worker1    10.215.100.101
   - VirtualMachine: web-01
   - DataVolume: web-01-root-disk
   - Secret: web-01-cloud-init
+  - VirtualMachine: web-02
+  - DataVolume: web-02-root-disk
+  - Secret: web-02-cloud-init
   - Service: (If any)
 
-Are you sure check? (y/n): y  <-- 사용자 확인 (실수 방지)
+Are you sure check? (y/n): y  <--- [Interact] 사용자 확인
 
 [INFO] Deleting VirtualMachine web-01...
 [INFO] Deleting DataVolume web-01-root-disk...
 [INFO] Deleting Secret web-01-cloud-init...
-[SUCCESS] All resources for 'web' have been deleted. <-- 전체 리소스 삭제 완료
+[INFO] Deleting VirtualMachine web-02...              <--- [Flow] web-02 삭제 진행
+[INFO] Deleting DataVolume web-02-root-disk...
+[INFO] Deleting Secret web-02-cloud-init...
+[SUCCESS] All resources for 'web' have been deleted. <--- [Result] 전체 리소스 회수 완료
 ```
 
 ## 4. 상세 동작 원리 (Deep Dive)
