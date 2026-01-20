@@ -31,25 +31,29 @@
 
 ### 1.2 시스템 구조
 ```mermaid
-graph LR
+graph TD
+    %% 1. Input Sources
     subgraph Inputs["1. Input Sources"]
-    Spec["Spec YAML<br>(Values: name, cpu...)"]
-    Tpl["Templates<br>(Structure: {{ name }}...)"]
+    Spec["Spec YAML<br>(web.yaml)"]
+    Tpl["Templates<br>(templates/*.yaml)"]
     end
 
+    %% 2. Processing Engine
     subgraph Engine["2. v-auto Engine"]
-    Render["Jinja2 Rendering<br>(Combine Data + Logic)"]
+    Render["Jinja2 Rendering<br>(Data + Logic)"]
     end
     
+    %% 3. Output Resources
     subgraph Resources["3. OpenShift Resources (Created)"]
-    VM["VirtualMachine<br>(from vm_template)"]
-    DV["DataVolume<br>(from datavolume_template)"]
-    Secret["Secret<br>(from secret_template)"]
-    NAD["NetworkAttachmentDef<br>(from nad_template)"]
+    VM["VirtualMachine<br>(vm_template.yaml)"]
+    DV["DataVolume<br>(datavolume_template.yaml)"]
+    Secret["Secret<br>(secret_template.yaml)"]
+    NAD["NetworkAttachmentDefinition<br>(nad_template.yaml)"]
     end
     
-    Spec -->|Provide Data| Render
-    Tpl -->|Provide Base| Render
+    %% Connections
+    Spec -->|Values| Render
+    Tpl -->|Structure| Render
     
     Render -->|Generate| VM
     Render -->|Generate| DV
