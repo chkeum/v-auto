@@ -161,15 +161,15 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
         interfaces:
           - network: nms            # (G) nic0
         network_config:
-          version: 2
+          version: 2                # Netplan 구성 버전
           ethernets:
-            enp1s0:                 # (H)
-              dhcp4: no
-              addresses: [10.215.100.101/24]
+            enp1s0:                 # (H) 인터페이스명 (VM 내부)
+              dhcp4: no             # DHCP 비활성화 (고정 IP 사용)
+              addresses: [10.215.100.101/24] # IP 및 서브넷
               routes:
-                - to: default
+                - to: default       # 기본 게이트웨이
                   via: 10.215.100.1
-              optional: true
+              optional: true        # 부팅 시 필수 대기 안 함
 
       # [Case 2] 확장형: 다중 네트워크(Multi-NIC), 고사양
       - name: web-02                    # (I)
@@ -179,21 +179,21 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
         interfaces:
           - network: nms            # (J) nic0 (서비스망)
           - network: storage            # (K) nic1 (스토리지망)
-        network_config:                 # (L) 인터페이스별 IP 지정
+        network_config:                 # (L) 상세 네트워크 설정
           version: 2
           ethernets:
             enp1s0:
               dhcp4: no
               addresses: [10.215.100.102/24]
               routes:
-                - to: default
+                - to: default       # 기본 라우팅
                   via: 10.215.100.1
-                - to: 10.200.0.0/16
+                - to: 10.200.0.0/16 # 추가 정적 라우팅
                   via: 10.215.100.254
               optional: true
             enp2s0:
               dhcp4: no
-              addresses: [192.168.10.50/24]
+              addresses: [192.168.10.50/24] # 스토리지망 IP
               optional: true
     ```
 
