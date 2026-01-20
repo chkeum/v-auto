@@ -1,326 +1,194 @@
-# VM 배포 표준 운영 절차서 (Standard Operating Procedure)
-
-> **문서 번호**: SOP-VM-01
-> **담당 부서**: 기술지원팀 (Technical Support)
-> **개요**: 고객의 요청에 따라 v-auto 도구를 사용하여 VM을 배포하고 인계하는 표준 절차를 정의한다.
+# 📘 v-auto 통합 운영 가이드 (Master Manual)
+**Version**: 1.0 (2026.01)
+**Target**: Technical Support Team / Operator
 
 ---
 
-## 1. 사전 준비 및 정보 수집 (Preparation)
-
-작업 착수 전, 고객으로부터 다음 정보를 반드시 수령해야 합니다. (요청 양식 참조)
-
-### 필수 확인 정보
-1.  **프로젝트명 (Project)**: 고객사 또는 서비스 단위 (예: `opasnet`, `samsung`)
-2.  **서비스 그룹명 (Spec)**: VM들의 논리적 그룹 (예: `web`, `db`, `backend`)
-3.  **네트워크 구성 (Infrastructure)**:
-    *   사용할 네트워크 대역 (CIDR) 및 게이트웨이
-    *   VLAN 연동 여부 및 OpenShift NAD(NetworkAttachmentDefinition) 명칭
-4.  **VM 제원 (Instance List)**:
-    *   Hostname 및 고정 IP 주소
-    *   OS 버전 (예: Ubuntu 22.04)
-    *   CPU / Memory / Disk 규격
+## 📚 목차 (Table of Contents)
+1.  **소개 및 아키텍처 (Introduction)**
+    *   툴의 목적 및 구조
+    *   작업 디렉토리 안내
+2.  **스펙 작성 가이드 (Spec Reference)**
+    *   `infrastructure` (네트워크/이미지)
+    *   `common` (기본 설정)
+    *   `cloud_init` (계정 및 보안)
+    *   `instances` (VM 상세 정의)
+3.  **운영 절차 (Operation SOP)**
+    *   Step 1: 검증 (`inspect`)
+    *   Step 2: 배포 (`deploy`)
+    *   Step 3: 확인 (`status`)
+    *   Step 4: 회수 (`delete`)
+4.  **상세 동작 원리 (Deep Dive)**
+    *   데이터 매핑 및 템플릿 처리 과정
+5.  **문제 해결 (Troubleshooting)**
 
 ---
 
-## 2. 작업 공간 생성 (Workspace Setup)
+## 1. 소개 및 아키텍처 (Introduction)
 
-v-auto 작업 공간(`v-auto/projects/`)에 고객 전용 디렉토리를 생성합니다.
+### 1.1 툴 개요
+`v-auto`는 OpenShift Virtualization 기반의 VM 배포를 **단일 YAML 스펙**으로 자동화하는 도구입니다. 복잡한 K8s 리소스(VirtualMachine, DataVolume, Secret, NAD)를 직접 작성하지 않고, 직관적인 설정 파일 하나로 통합 관리합니다.
 
-```bash
-# 1. 툴 디렉토리로 이동
-cd ~/v-auto
-
-# 2. 프로젝트 디렉토리 생성 (이미 존재하면 생략)
-# 형식: projects/[고객사명]
-mkdir -p projects/opasnet
+### 1.2 시스템 구조
+```mermaid
+graph LR
+    User[Operator] -->|CMD: vman| vAuto[v-auto Engine]
+    vAuto -->|Read| Spec[Spec YAML]
+    vAuto -->|Render| Tpl[Jinja2 Templates]
+    vAuto -->|Apply| OCP[OpenShift Cluster]
+    
+    subgraph "OpenShift Resources"
+    OCP --> VM[VirtualMachine]
+    OCP --> DV[DataVolume]
+    OCP --> Secret[Cloud-Init Secret]
+    OCP --> NAD[Network Attach Def]
+    end
 ```
 
+### 1.3 작업 디렉토리 구조 (`/home/core/v-auto`)
+*   **`vman`**: 실행 스크립트 (모든 명령의 진입점)
+*   **`projects/`**: 프로젝트별 스펙 파일 저장소
+    *   `opasnet/web.yaml`: (예시) Opasnet 프로젝트의 Web 서비스 스펙
+*   **`infrastructure/`**: 공통 템플릿 및 설정
+    *   `templates/*.yaml`: 리소스 생성용 Jinja2 템플릿 (수정 금지)
+
 ---
 
-## 3. 스펙 파일 작성 (Specification Authoring)
+## 2. 스펙 작성 가이드 (Spec Reference)
 
-고객 요구사항을 바탕으로 통합 스펙 파일(`YAML`)을 작성합니다.
-파일 위치: `projects/[고객사명]/[서비스명].yaml` (예: `projects/opasnet/web.yaml`)
+**기준 파일**: `projects/opasnet/web.yaml`
+모든 배포는 이 YAML 파일을 작성하는 것에서 시작합니다. 각 섹션별 작성법을 상세히 설명합니다.
 
-### 작성 예시 (Template)
-
-아래 내용을 복사하여 상황에 맞게 수정하십시오.
-
+### [A] Infrastructure (인프라 정의)
+VM이 사용할 네트워크와 OS 이미지를 정의합니다.
 ```yaml
-# ==========================================
-# [1] 인프라 정의 (Infrastructure Definition)
-# ==========================================
 infrastructure:
   networks:
-    default:                      # [중요] 인터페이스 별칭 (alias)
-      nad: br-virt-net            # OpenShift NAD 이름 (고객사 환경에 맞게 수정)
-      bridge: br-virt             # (참고용) 브리지 이름
-      ipam:                       # IP 관리 정책
-        type: whereabouts         # (고정/할당 방식)
-        range: 10.215.100.0/24    # 네트워크 대역
-        gateway: 10.215.100.1     # 게이트웨이 주소
-      dns: [8.8.8.8]              # DNS 서버
-
+    default:
+      bridge: br-virt          # 물리 브리지 인터페이스 (서버 구성에 따름)
+      nad_name: br-virt-net    # OpenShift에 생성될 NAD 리소스 이름
+    storage:
+      bridge: br-storage
+      nad_name: br-storage-net
+      
   images:
-    ubuntu-22.04:                 # 이미지 별칭
-      url: "http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2"
-      min_cpu: 2
-      min_mem: 2Gi
+    ubuntu-22.04:
+      url: "http://10.215.1.240/.../ubuntu-22.04.qcow2" # 이미지 다운로드 경로
+```
 
-# ==========================================
-# [2] 공통 설정 (Common Configuration)
-# ==========================================
-common:
-  image: "ubuntu-22.04"           # 위에서 정의한 이미지 별칭 사용
-  network: default                # 위에서 정의한 네트워크 별칭 사용
-  cpu: 4
-  memory: 8Gi
-  disk_size: 50Gi
-  
-  # 클라우드 초기화 (Cloud-Init)
-  cloud_init:
-    users:
-      - name: admin               # 관리자 계정 생성
-        passwd: "{{ user_password | hash_password }}" # 배포 시 입력받음
-        groups: [sudo]
-        shell: /bin/bash
-    runcmd:
-      - echo "Initial Setup Complete" > /root/setup.log
+### [B] Cloud-Init (계정 및 스크립트)
+VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워드 설정, 초기 명령어가 포함됩니다.
+```yaml
+cloud_init: |
+  #cloud-config
+  chpasswd:
+    list: |
+      core:core       # ID:Password (운영 편의상 자동 설정)
+    expire: False
+  users:
+    - name: core
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+  runcmd:
+    - [ systemctl, restart, ssh ] # 초기 실행 명령
+```
 
-# ==========================================
-# [3] 인스턴스 목록 (Instance List)
-# ==========================================
+### [C] Instances (인스턴스 상세)
+실제 배포할 VM들의 개별 설정을 정의합니다. 가장 중요한 부분입니다.
+```yaml
 instances:
-  - name: web-01                  # 호스트네임
-    ip: 10.215.100.101            # 고정 IP 할당
-    
-  - name: web-02
-    ip: 10.215.100.102
-    cpu: 8                        # (옵션) 특정 VM만 사양 변경 가능
+  - name: web-01                    # (1) VM 호스트명
+    cpu: "500m"                     # (2) CPU 오버라이드 (기본값 무시)
+    node_selector:
+      kubernetes.io/hostname: worker1 # (3) 특정 노드 고정
+      
+    interfaces:                     # (4) 연결할 네트워크망 선택
+      - network: default
+      
+    network_config:                 # (5) IP 및 라우팅 상세 (Netplan 문법)
+      ethernets:
+        enp1s0:
+          addresses: [10.215.100.101/24]   # 고정 IP
+          routes:
+            - to: default
+              via: 10.215.100.1            # 게이트웨이
 ```
 
 ---
 
-## 4. 배포 및 검증 절차 (Deployment Process)
+## 3. 운영 절차 (Operation SOP)
 
-모든 작업은 `vman` 명령어를 통해 수행합니다.
-
-### 📋 CLI 명령어 요약
-| Action  | 설명 | 사용법 |
-| :--- | :--- | :--- |
-| **inspect** | 스펙 설정 및 IP 계산 결과 미리보기 (Dry-Run) | `./vman [PRJ] [SPEC] inspect` |
-| **deploy** | 리소스 실제 생성 및 배포 (멱등성 보장) | `./vman [PRJ] [SPEC] deploy` |
-| **status** | 배포된 VM 상태, IP, 디스크, 이벤트 조회 | `./vman [PRJ] [SPEC] status` |
-| **delete** | 배포된 모든 리소스 삭제 | `./vman [PRJ] [SPEC] delete` |
-
----
+모든 명령은 `./vman [프로젝트] [스펙] [액션]` 형식을 따릅니다.
 
 ### Step 1: 설정 검증 (Inspect)
-작성한 스펙이 올바르게 해석되는지, 인프라 설정이 누락되지 않았는지 확인합니다.
+작성한 스펙이 정상적으로 해석되는지 확인합니다. **가장 먼저 수행해야 할 단계입니다.**
 
 ```bash
-# 사용법: ./vman [프로젝트] [스펙] inspect
 ./vman opasnet web inspect
 ```
 
-**실행 예시**:
-```text
-══════════════════════════════════════════════════════════════════════
- 🔍  CONFIGURATION INSPECTION REPORT | OPASNET/WEB
-══════════════════════════════════════════════════════════════════════
+**확인 포인트**:
+1.  **IP Address**: `Auto/DHCP`가 아닌 `10.215.100.101/24` 처럼 고정 IP가 잘 파싱되는지 확인.
+2.  **Infrastructure Catalog**: `NAD`와 `Bridge` 정보가 올바르게 매핑되었는지 확인.
 
- [1] PROJECT CONTEXT
- Namespace            : vm-opasnet
- Resources Defaults   : CPU=1, MEM=1Gi, Disk=10Gi
- --------------------------------------------------------------------
-
- [2] INFRASTRUCTURE CATALOG (Resolved)
- Networks             :
-       pod-net         [POD   ] NAD: -               Bridge: -            Subnet: -
-       default         [MULTUS] NAD: br-virt-net     Bridge: br-virt      Subnet: -
-       storage         [MULTUS] NAD: br-storage-net  Bridge: br-storage   Subnet: -
- Images               :
-       ubuntu-22.04    -> http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2
- --------------------------------------------------------------------
-
- [3] INSTANCE DEFINITIONS (Total: 2)
-
-   [ INSTANCE: web-01 ]
-       Specs           : Override (500mvCPU / 1Gi)
-       IP Address      :
-           - Auto/DHCP
-       Interfaces      : default
-
-   [ INSTANCE: web-02 ]
-       Specs           : Default (1vCPU/1Gi)
-       IP Address      :
-           - Auto/DHCP
-       Interfaces      : default, storage
- --------------------------------------------------------------------
-
- [4] CLOUD-INIT CONFIGURATION (User-Data Template)
-      Users           :
-        - core (Groups: [])
-        - suser (Groups: [])
-      RunCmd          : (4 commands)
-        $ ['sh', '-c', "echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf"]
-        $ ['systemctl', 'restart', 'ssh']
-        $ ['rm', '-f', '/etc/netplan/50-cloud-init.yaml']
-        $ ['netplan', 'apply']
-
-══════════════════════════════════════════════════════════════════════
-```
-
-### Step 2: 리소스 배포 (Deploy)
-실제 OpenShift 리소스를 생성합니다.
+### Step 2: 배포 (Deploy)
+검증이 끝난 스펙을 실제 클러스터에 반영합니다.
 
 ```bash
-# 사용법: ./vman [프로젝트] [스펙] deploy
 ./vman opasnet web deploy
 ```
-
-**비밀번호 입력 정책**:
-*   스펙(`web.yaml`)에 **Hardcoded Password**가 정의된 경우 (`chpasswd` 등), 비밀번호를 묻지 않고 즉시 배포가 진행됩니다.
-*   변수(`{{ password }}`)가 사용된 경우에만 대화형 프롬프트가 나타납니다.
-*   **현재 `opasnet/web` 스펙은 자동화 모드로 설정되어 있어 입력이 불필요합니다.**
-
-**실행 예시 (Dry-Run)**:
-`--dry-run` 옵션을 사용하면 실제 생성 전에 `VirtualMachine`, `DataVolume`, `Secret` 등 생성될 리소스의 상세 스펙을 미리 확인할 수 있습니다.
-
-```text
- ─── [ VirtualMachine            | Name: web-02               ] ───
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: web-02
-  namespace: vm-opasnet
-  labels:
-    v-auto/managed: 'true'
-    v-auto/project: opasnet
-    v-auto/spec: web
-    v-auto/name: web-02
-spec:
-  running: true
-  template:
-    metadata:
-      labels:
-        kubevirt.io/vm: web-02
-    spec:
-      domain:
-        devices:
-          disks:
-          - disk:
-              bus: virtio
-            name: root-disk
-...
-```
-*   검증이 완료되면 `--yes` 옵션을 붙여 즉시 배포할 수 있습니다.
+*   **Dry-Run**: `--dry-run` 옵션을 추가하면 생성될 YAML을 미리 볼 수 있습니다.
+*   **Password**: `web.yaml`에 비밀번호가 하드코딩 되어 있으므로 별도 입력 없이 진행됩니다.
 
 ### Step 3: 상태 확인 (Status)
-배포된 VM이 정상적으로 기동되었는지 확인합니다.
+배포 후 VM이 정상 동작하는지 모니터링합니다.
 
 ```bash
-# 사용법: ./vman [프로젝트] [스펙] status
 ./vman opasnet web status
 ```
+**출력 해석**:
+*   **Virtual Machines**: `Ready: true`, `Status: Running` 이어야 합니다.
+*   **Active Runtime**: `VMI-IP` 항목에 할당된 IP가 표시되는지 확인합니다.
+*   **Recent Events**: `Warning`이나 `Error` 이벤트가 없는지 확인합니다.
 
-**실행 예시**:
-```text
-[ Detailed Status Diagnostic: opasnet/web ]
-Target Namespace: vm-opasnet
-====================================================================================================
-
-1. Managed Virtual Machines (Health & Power)
-----------------------------------------------------------------------------------------------------
-KIND             NAME     STATUS    READY
-VirtualMachine   web-01   Running   true
-VirtualMachine   web-02   Running   true
-
-2. Active Runtime & IP Addresses (VMI / Pod)
-----------------------------------------------------------------------------------------------------
-KIND                      NAME                           PHASE        ADDRESS            NODE
-VirtualMachineInstance    web-01                         Running      -                  <none>
-VirtualMachineInstance    web-02                         Running      -                  <none>
-Pod                       virt-launcher-web-01-775xf     Running      192.168.5.112      worker1.chk-ocp.skt.local
-Pod                       virt-launcher-web-02-4trnd     Running      192.168.4.55       worker2.chk-ocp.skt.local
-
-3. Storage & Disk Provisioning (DataVolumes / PVC)
-----------------------------------------------------------------------------------------------------
-KIND         NAME               PHASE       PROGRESS
-DataVolume   web-01-root-disk   Succeeded   100.0%
-DataVolume   web-02-root-disk   Succeeded   100.0%
-
-4. Network (NAD) & Config (Secret) Resources
-----------------------------------------------------------------------------------------------------
-KIND                          NAME                CREATED
-NetworkAttachmentDefinition   br-storage-net      2026-01-19T19:16:29Z
-NetworkAttachmentDefinition   br-virt-net         2026-01-19T19:16:26Z
-Secret                        web-01-cloud-init   2026-01-19T19:16:26Z
-====================================================================================================
-```
-*   **Check Point**:
-    *   VirtualMachine 상태가 `Running` / `True` 인가?
-    *   DataVolume(Disk)이 `Succeeded` (100%) 상태인가?
-    *   Pod에 IP가 할당되었는가? (Multus IP는 VM 내부에서 확인 필요하지만, Pod IP 할당은 노드 스케줄링 성공을 의미함)
-
----
-
-## 5. 변경 및 폐기 (Maintenance)
-
-### VM 추가/변경
-1.  스펙 파일(`web.yaml`)의 `instances` 리스트를 수정합니다.
-2.  다시 `deploy` 명령을 실행합니다.
-    *   **주의**: 기존에 잘 돌고 있는 VM은 건드리지 않고, **변경사항(비교)**만 자동으로 반영됩니다. (Idempotent)
-
-### 특정 VM 재배포
-특정 VM 하나만 문제가 있어 초기화해야 할 경우 `--target` 옵션을 사용합니다.
-```bash
-./vman opasnet web deploy --target web-02
-```
-
-### 전체 삭제 (Cleanup)
-프로젝트 종료 시 자원을 회수합니다.
+### Step 4: 회수 (Delete)
+작업이 종료되거나 잘못 배포된 경우 리소스를 일괄 삭제합니다.
 
 ```bash
-# 사용법: ./vman [프로젝트] [스펙] delete
 ./vman opasnet web delete
 ```
-
-**실행 예시**:
-```text
-Gathering resources for deletion in namespace 'vm-opasnet'...
-
-THE FOLLOWING RESOURCES WILL BE PERMANENTLY DELETED:
-
-[ 1. Managed Resources (Selector: v-auto/project=opasnet,v-auto/spec=web) ]
-KIND                          NAME                STATUS    PHASE       READY
-VirtualMachine                web-01              Running     -         true
-VirtualMachine                web-02              Running     -         true
-DataVolume                    web-01-root-disk      -       Succeeded     -   
-DataVolume                    web-02-root-disk      -       Succeeded     -   
-PersistentVolumeClaim         web-01-root-disk      -       Bound         -   
-PersistentVolumeClaim         web-02-root-disk      -       Bound         -   
-Secret                        web-01-cloud-init     -         -           -   
-Secret                        web-02-cloud-init     -         -           -   
-NetworkAttachmentDefinition   br-storage-net        -         -           -   
-NetworkAttachmentDefinition   br-virt-net           -         -           -   
-
-Are you sure you want to proceed with deletion? [y/N]:
-```
-*   `y`를 입력하면 위 리소스가 모두 삭제됩니다. (VM이 Running 상태여도 강제 종료 후 삭제됨)
+*   해당 스펙으로 생성된 `VM`, `Disk`, `Network`, `Secret`을 모두 찾아 목록을 보여준 뒤 삭제합니다.
 
 ---
 
-## 6. 문제 해결 (Troubleshooting)
+## 4. 상세 동작 원리 (Deep Dive)
 
-**Case 1: "Valid networks resolving error" 발생**
-*   **원인**: 스펙 파일의 `network: ...` 에 적은 이름이 `infrastructure/networks` 섹션에 정의되지 않았습니다.
-*   **조치**: 오타를 확인하거나 infrastructure 정의를 추가하십시오.
+**"내가 쓴 YAML이 어떻게 K8s 리소스가 되나요?"**
 
-**Case 2: "IP already in use" 에러**
-*   **원인**: 할당하려는 고정 IP를 다른 VM이 이미 사용 중입니다.
-*   **조치**: `status` 명령으로 사용 중인 IP를 확인하고, 다른 IP를 할당하십시오.
+### 4.1 데이터 흐름 (Traceability)
+
+| YAML Spec (`web.yaml`) | 처리 엔진 (`vm_manager.py`) | 템플릿 (`templates/`) | OpenShift Resource |
+| :--- | :--- | :--- | :--- |
+| `instances[].name` | `ctx['vm_name']` | `vm_template.yaml`<br>`{{ vm_name }}` | **VirtualMachine**<br>`metadata.name` |
+| `instances[].cpu` | `ctx['cpu']` | `vm_template.yaml`<br>`{{ cpu }}` | **VirtualMachine**<br>`spec...requests.cpu` |
+| `infrastructure.images` | `ctx['image_url']` | `datavolume_template.yaml`<br>`{{ image_url }}` | **DataVolume**<br>`spec.source.http.url` |
+| `cloud_init` | `ctx['cloud_init']`<br>*(Base64 Encode)* | `secret_template.yaml`<br>`{{ userData }}` | **Secret**<br>`data.userData` |
+| `network_config` | `ctx['network_config']` | `secret_template.yaml`<br>`{{ networkData }}` | **Secret**<br>`data.networkData` |
+
+### 4.2 핵심 로직 설명
+1.  **Inheritance (상속)**: `instances`의 설정은 `common` 설정을 덮어씁니다. (예: `web-01`이 `cpu`를 지정하면 `common.cpu`는 무시됨)
+2.  **Jinja2 Templating**: 파이썬 엔진이 YAML 값을 읽어 템플릿의 `{{ variable }}` 위치에 문자열을 치환해 넣습니다.
+3.  **Idempotency (멱등성)**: `apply` 명령을 사용하므로, 스펙이 변하지 않았다면 여러 번 실행해도 결과는 같습니다.
 
 ---
-**Technical Support Team Confidential**
+
+## 5. 문제 해결 (Troubleshooting)
+
+**Q: `vman inspect`에서 IP가 `Auto/DHCP`로 나옵니다.**
+A: `web.yaml`의 `network_config` 들여쓰기나 문법을 확인하세요. `ethernets` 키 바로 아래에 인터페이스명(`enp1s0`)이 와야 합니다.
+
+**Q: `deploy` 중 권한 오류(Forbidden)가 발생합니다.**
+A: `oc login -u admin`으로 로그인되어 있는지 확인하세요. (`oc whoami` 로 확인 가능)
+
+**Q: VM은 Running인데 접속이 안 됩니다.**
+A: `vman status`로 IP가 정상 할당되었는지 확인하고, `cloud-init` 로그를 확인해야 합니다. (콘솔 접속 필요)

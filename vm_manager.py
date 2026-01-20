@@ -474,7 +474,13 @@ def deploy_action(args):
                 if isinstance(nc, str): nc_data = yaml.safe_load(nc)
                 else: nc_data = nc
                 
-                ethernets = nc_data.get('network', {}).get('ethernets', {})
+                # Logic to handle both 'network: { ethernets: ... }' and direct '{ ethernets: ... }'
+                ethernets = {}
+                if 'network' in nc_data:
+                    ethernets = nc_data['network'].get('ethernets', {})
+                else:
+                    ethernets = nc_data.get('ethernets', {})
+
                 for eth, conf in ethernets.items():
                     addrs = conf.get('addresses', [])
                     for a in addrs:
@@ -1021,11 +1027,18 @@ def inspect_action(args):
                 else:
                     nc_data = nc
                 
-                ethernets = nc_data.get('network', {}).get('ethernets', {})
+                # Logic to handle both 'network: { ethernets: ... }' and direct '{ ethernets: ... }'
+                ethernets = {}
+                if 'network' in nc_data:
+                    ethernets = nc_data['network'].get('ethernets', {})
+                else:
+                    ethernets = nc_data.get('ethernets', {})
+
                 for eth, conf in ethernets.items():
                     addrs = conf.get('addresses', [])
                     for a in addrs:
-                        nc_ips.append(f"{eth} = {a}") # Spaces for readability
+                        # Normalize output
+                        nc_ips.append(f"{eth} = {a}")
             except:
                 pass
         
@@ -1058,7 +1071,7 @@ def inspect_action(args):
             users = ci_data.get('users', [])
             print(f"      {'Users':<15} :")
             for u in users:
-                print(f"        - {u.get('name')} (Groups: {u.get('groups', [])})")
+                print(f"        - {u.get('name')}")
                 
             # Packages
             pkgs = ci_data.get('packages', [])
