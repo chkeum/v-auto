@@ -106,6 +106,16 @@ instances:
 
 모든 작업은 `vman` 명령어를 통해 수행합니다.
 
+### 📋 CLI 명령어 요약
+| Action  | 설명 | 사용법 |
+| :--- | :--- | :--- |
+| **inspect** | 스펙 설정 및 IP 계산 결과 미리보기 (Dry-Run) | `./vman [PRJ] [SPEC] inspect` |
+| **deploy** | 리소스 실제 생성 및 배포 (멱등성 보장) | `./vman [PRJ] [SPEC] deploy` |
+| **status** | 배포된 VM 상태, IP, 디스크, 이벤트 조회 | `./vman [PRJ] [SPEC] status` |
+| **delete** | 배포된 모든 리소스 삭제 | `./vman [PRJ] [SPEC] delete` |
+
+---
+
 ### Step 1: 설정 검증 (Inspect)
 작성한 스펙이 올바르게 해석되는지, 인프라 설정이 누락되지 않았는지 확인합니다.
 
@@ -113,9 +123,54 @@ instances:
 # 사용법: ./vman [프로젝트] [스펙] inspect
 ./vman opasnet web inspect
 ```
-*   **Check Point**:
-    *   Networks 항목에 IP/Gateway 정보가 정확한가?
-    *   Instance List에 배포 대상 VM과 IP가 정확한가?
+
+**실행 예시**:
+```text
+══════════════════════════════════════════════════════════════════════
+ 🔍  CONFIGURATION INSPECTION REPORT | OPASNET/WEB
+══════════════════════════════════════════════════════════════════════
+
+ [1] PROJECT CONTEXT
+ Namespace            : vm-opasnet
+ Resources Defaults   : CPU=1, MEM=1Gi, Disk=10Gi
+ --------------------------------------------------------------------
+
+ [2] INFRASTRUCTURE CATALOG (Resolved)
+ Networks             :
+       pod-net         [POD   ] NAD: -               Bridge: -            Subnet: -
+       default         [MULTUS] NAD: br-virt-net     Bridge: br-virt      Subnet: -
+       storage         [MULTUS] NAD: br-storage-net  Bridge: br-storage   Subnet: -
+ Images               :
+       ubuntu-22.04    -> http://10.215.1.240/vm-images/ubuntu/ubuntu-22.04.qcow2
+ --------------------------------------------------------------------
+
+ [3] INSTANCE DEFINITIONS (Total: 2)
+
+   [ INSTANCE: web-01 ]
+       Specs           : Override (500mvCPU / 1Gi)
+       IP Address      :
+           - Auto/DHCP
+       Interfaces      : default
+
+   [ INSTANCE: web-02 ]
+       Specs           : Default (1vCPU/1Gi)
+       IP Address      :
+           - Auto/DHCP
+       Interfaces      : default, storage
+ --------------------------------------------------------------------
+
+ [4] CLOUD-INIT CONFIGURATION (User-Data Template)
+      Users           :
+        - core (Groups: [])
+        - suser (Groups: [])
+      RunCmd          : (4 commands)
+        $ ['sh', '-c', "echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/99-force-pw.conf"]
+        $ ['systemctl', 'restart', 'ssh']
+        $ ['rm', '-f', '/etc/netplan/50-cloud-init.yaml']
+        $ ['netplan', 'apply']
+
+══════════════════════════════════════════════════════════════════════
+```
 
 ### Step 2: 리소스 배포 (Deploy)
 실제 OpenShift 리소스를 생성합니다.
@@ -124,8 +179,43 @@ instances:
 # 사용법: ./vman [프로젝트] [스펙] deploy
 ./vman opasnet web deploy
 ```
-1.  명령어를 입력하면 **VM 패스워드 입력** 프롬프트가 뜹니다. 고객에게 전달할 초기 비밀번호를 입력하십시오.
-2.  `--dry-run` 옵션을 사용하면 실제로 생성하지 않고 생성될 YAML 파일만 출력해볼 수 있습니다.
+
+**비밀번호 입력 정책**:
+*   스펙(`web.yaml`)에 **Hardcoded Password**가 정의된 경우 (`chpasswd` 등), 비밀번호를 묻지 않고 즉시 배포가 진행됩니다.
+*   변수(`{{ password }}`)가 사용된 경우에만 대화형 프롬프트가 나타납니다.
+*   **현재 `opasnet/web` 스펙은 자동화 모드로 설정되어 있어 입력이 불필요합니다.**
+
+**실행 예시 (Dry-Run)**:
+`--dry-run` 옵션을 사용하면 실제 생성 전에 `VirtualMachine`, `DataVolume`, `Secret` 등 생성될 리소스의 상세 스펙을 미리 확인할 수 있습니다.
+
+```text
+ ─── [ VirtualMachine            | Name: web-02               ] ───
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: web-02
+  namespace: vm-opasnet
+  labels:
+    v-auto/managed: 'true'
+    v-auto/project: opasnet
+    v-auto/spec: web
+    v-auto/name: web-02
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: web-02
+    spec:
+      domain:
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: root-disk
+...
+```
+*   검증이 완료되면 `--yes` 옵션을 붙여 즉시 배포할 수 있습니다.
 
 ### Step 3: 상태 확인 (Status)
 배포된 VM이 정상적으로 기동되었는지 확인합니다.
@@ -134,10 +224,45 @@ instances:
 # 사용법: ./vman [프로젝트] [스펙] status
 ./vman opasnet web status
 ```
+
+**실행 예시**:
+```text
+[ Detailed Status Diagnostic: opasnet/web ]
+Target Namespace: vm-opasnet
+====================================================================================================
+
+1. Managed Virtual Machines (Health & Power)
+----------------------------------------------------------------------------------------------------
+KIND             NAME     STATUS    READY
+VirtualMachine   web-01   Running   true
+VirtualMachine   web-02   Running   true
+
+2. Active Runtime & IP Addresses (VMI / Pod)
+----------------------------------------------------------------------------------------------------
+KIND                      NAME                           PHASE        ADDRESS            NODE
+VirtualMachineInstance    web-01                         Running      -                  <none>
+VirtualMachineInstance    web-02                         Running      -                  <none>
+Pod                       virt-launcher-web-01-775xf     Running      192.168.5.112      worker1.chk-ocp.skt.local
+Pod                       virt-launcher-web-02-4trnd     Running      192.168.4.55       worker2.chk-ocp.skt.local
+
+3. Storage & Disk Provisioning (DataVolumes / PVC)
+----------------------------------------------------------------------------------------------------
+KIND         NAME               PHASE       PROGRESS
+DataVolume   web-01-root-disk   Succeeded   100.0%
+DataVolume   web-02-root-disk   Succeeded   100.0%
+
+4. Network (NAD) & Config (Secret) Resources
+----------------------------------------------------------------------------------------------------
+KIND                          NAME                CREATED
+NetworkAttachmentDefinition   br-storage-net      2026-01-19T19:16:29Z
+NetworkAttachmentDefinition   br-virt-net         2026-01-19T19:16:26Z
+Secret                        web-01-cloud-init   2026-01-19T19:16:26Z
+====================================================================================================
+```
 *   **Check Point**:
-    *   `Running` 상태가 `true`인가?
-    *   `IP Address`가 정상적으로 할당되었는가?
-    *   `PVC` 상태가 `Succeeded` 또는 `Bound`인가?
+    *   VirtualMachine 상태가 `Running` / `True` 인가?
+    *   DataVolume(Disk)이 `Succeeded` (100%) 상태인가?
+    *   Pod에 IP가 할당되었는가? (Multus IP는 VM 내부에서 확인 필요하지만, Pod IP 할당은 노드 스케줄링 성공을 의미함)
 
 ---
 
@@ -156,9 +281,34 @@ instances:
 
 ### 전체 삭제 (Cleanup)
 프로젝트 종료 시 자원을 회수합니다.
+
 ```bash
+# 사용법: ./vman [프로젝트] [스펙] delete
 ./vman opasnet web delete
 ```
+
+**실행 예시**:
+```text
+Gathering resources for deletion in namespace 'vm-opasnet'...
+
+THE FOLLOWING RESOURCES WILL BE PERMANENTLY DELETED:
+
+[ 1. Managed Resources (Selector: v-auto/project=opasnet,v-auto/spec=web) ]
+KIND                          NAME                STATUS    PHASE       READY
+VirtualMachine                web-01              Running     -         true
+VirtualMachine                web-02              Running     -         true
+DataVolume                    web-01-root-disk      -       Succeeded     -   
+DataVolume                    web-02-root-disk      -       Succeeded     -   
+PersistentVolumeClaim         web-01-root-disk      -       Bound         -   
+PersistentVolumeClaim         web-02-root-disk      -       Bound         -   
+Secret                        web-01-cloud-init     -         -           -   
+Secret                        web-02-cloud-init     -         -           -   
+NetworkAttachmentDefinition   br-storage-net        -         -           -   
+NetworkAttachmentDefinition   br-virt-net           -         -           -   
+
+Are you sure you want to proceed with deletion? [y/N]:
+```
+*   `y`를 입력하면 위 리소스가 모두 삭제됩니다. (VM이 Running 상태여도 강제 종료 후 삭제됨)
 
 ---
 
