@@ -76,43 +76,82 @@ infrastructure:
       url: "http://10.215.1.240/.../ubuntu-22.04.qcow2" # 이미지 다운로드 경로
 ```
 
-### [B] Cloud-Init (계정 및 스크립트)
+### [B] Cloud-Init (계정 및 보안)
 VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워드 설정, 초기 명령어가 포함됩니다.
-```yaml
-cloud_init: |
-  #cloud-config
-  chpasswd:
-    list: |
-      core:core       # ID:Password (운영 편의상 자동 설정)
-    expire: False
-  users:
-    - name: core
-      sudo: ALL=(ALL) NOPASSWD:ALL
-      shell: /bin/bash
-  runcmd:
-    - [ systemctl, restart, ssh ] # 초기 실행 명령
-```
+
+**1. 다중 계정 설정 (Multiple Accounts)**
+여러 사용자를 동시에 생성하고 각각 권한을 부여할 수 있습니다.
+*   **YAML 입력 (`web.yaml`)**:
+    ```yaml
+    cloud_init: |
+      chpasswd:
+        list: |
+          core:core       # ID:Password (운영 편의상 자동 설정)
+          suser:suser     # 추가 서비스 계정
+        expire: False
+      users:
+        - name: core      # 관리자 계정
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+        - name: suser     # 서비스 계정
+          sudo: ALL=(ALL) NOPASSWD:ALL
+    ```
+*   **검증 결과 (`vman inspect` Output)**:
+    ```text
+    [4] CLOUD-INIT CONFIGURATION
+          Users           :
+            - core
+            - suser       <-- 두 계정이 모두 인식됨을 확인
+    ```
 
 ### [C] Instances (인스턴스 상세)
 실제 배포할 VM들의 개별 설정을 정의합니다. 가장 중요한 부분입니다.
-```yaml
-instances:
-  - name: web-01                    # (1) VM 호스트명
-    cpu: "500m"                     # (2) CPU 오버라이드 (기본값 무시)
-    node_selector:
-      kubernetes.io/hostname: worker1 # (3) 특정 노드 고정
+
+**1. 다중 인스턴스 배포 (Multiple Instances)**
+하나의 스펙 파일로 서로 다른 설정을 가진 VM을 동시에 배포합니다.
+*   **YAML 입력 (`web.yaml`)**:
+    ```yaml
+    instances:
+      - name: web-01                    # (1) VM 1호기
+        cpu: "500m"                     #     자원 오버라이드
+        node_selector:
+          kubernetes.io/hostname: worker1 #     Worker1 고정
       
-    interfaces:                     # (4) 연결할 네트워크망 선택
-      - network: default
-      
-    network_config:                 # (5) IP 및 라우팅 상세 (Netplan 문법)
-      ethernets:
-        enp1s0:
-          addresses: [10.215.100.101/24]   # 고정 IP
-          routes:
-            - to: default
-              via: 10.215.100.1            # 게이트웨이
-```
+      - name: web-02                    # (2) VM 2호기
+        node_selector:
+          kubernetes.io/hostname: worker2 #     Worker2 고정
+    ```
+*   **검증 결과 (`vman status` Output)**:
+    ```text
+    NAME   STATUS    NODE
+    web-01 Running   worker1  <-- 설정대로 분산 배치됨
+    web-02 Running   worker2
+    ```
+
+**2. 다중 네트워크 (Multi-NIC)**
+하나의 VM에 여러 개의 네트워크 인터페이스를 연결할 수 있습니다.
+*   **YAML 입력 (`web.yaml` - `web-02` 예시)**:
+    ```yaml
+    instances:
+      - name: web-02
+        interfaces:                     # (3) 연결할 네트워크망 선택
+          - network: default
+          - network: storage            #     추가 네트워크 연결
+          
+        network_config:                 # (4) IP 상세 정의
+          ethernets:
+            enp1s0:
+              addresses: [10.215.100.102/24]
+            enp2s0:
+              addresses: [192.168.10.50/24]  # 스토리지망 IP
+    ```
+*   **검증 결과 (`vman inspect` Output)**:
+    ```text
+    [ INSTANCE: web-02 ]
+        IP Address      :
+            - enp1s0 = 10.215.100.102/24
+            - enp2s0 = 192.168.10.50/24     <-- 두 인터페이스 모두 인식 확인
+    ```
 
 ---
 
@@ -182,34 +221,11 @@ instances:
 
 ---
 
-## 5. 검증된 고급 시나리오 (Verified Scenarios)
-
-다음은 실제 테스트 및 검증이 완료된 고급 구성 사례입니다.
-
-### 5.1 다중 계정 설정 (Multiple Accounts)
-하나의 VM에 여러 사용자를 생성하고 각각 비밀번호를 설정할 수 있습니다.
-(`cloud_init` 항목을 통해 제어)
-*   **예시**: 관리자(`core`)와 서비스 계정(`suser`) 동시 생성
-*   **참고**: `chpasswd` 리스트에 `ID:Password` 형식으로 나열하면 자동으로 적용됩니다.
-
-### 5.2 다중 네트워크 (Multiple Networks / Multi-NIC)
-하나의 VM에 여러 개의 네트워크 인터페이스를 연결할 수 있습니다.
-(`instances[].interfaces` 및 `network_config` 활용)
-*   **예시**: `web-02` 인스턴스
-    *   `nic0`: 서비스망 (`defaut` -> `br-virt`)
-    *   `nic1`: 스토리지망 (`storage` -> `br-storage`)
-*   **검증**: `vman status` 실행 시 IP가 두 개의 인터페이스(`enp1s0`, `enp2s0`)에 각각 할당된 것을 확인했습니다.
-
-### 5.3 다중 인스턴스 배포 (Multiple Instances)
-하나의 스펙 파일(`web.yaml`)로 서로 다른 설정을 가진 여러 VM을 동시에 배포할 수 있습니다.
-*   **예시**:
-    *   `web-01`: 0.5 vCPU, 단일망, Worker1 노드 고정
-    *   `web-02`: 1.0 vCPU, 이중망, Worker2 노드 고정
-*   **검증**: `deploy` 한 번으로 두 VM이 독립적인 설정(IP, Node, Resource)으로 생성됨을 확인했습니다.
+## 5. 문제 해결 (Troubleshooting)
 
 ---
 
-## 6. 문제 해결 (Troubleshooting)
+
 
 **Q: `vman inspect`에서 IP가 `Auto/DHCP`로 나옵니다.**
 A: `web.yaml`의 `network_config` 들여쓰기나 문법을 확인하세요. `ethernets` 키 바로 아래에 인터페이스명(`enp1s0`)이 와야 합니다.
