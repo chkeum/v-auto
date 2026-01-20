@@ -96,7 +96,7 @@ VM이 사용할 네트워크와 OS 이미지를 정의합니다.
       networks:
         pod-net:
           type: pod            # (A) Pod 네트워크 (기본)
-        default:
+        nms:
           bridge: br-virt      # (B) 서비스망 (L2 Bridge)
           nad_name: br-virt-net
         storage:
@@ -111,7 +111,7 @@ VM이 사용할 네트워크와 OS 이미지를 정의합니다.
     ```text
     [2] INFRASTRUCTURE CATALOG
           pod-net   [POD]    NAD: -             Bridge: -         <-- (A)
-          default   [MULTUS] NAD: br-virt-net   Bridge: br-virt   <-- (B)
+          nms       [MULTUS] NAD: br-virt-net   Bridge: br-virt   <-- (B)
           storage   [MULTUS] NAD: br-storage-net Bridge: br-storage <-- (C)
     ```
 
@@ -158,7 +158,7 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
         cpu: "500m"
         node_selector: {hostname: worker1}
         interfaces:
-          - network: default            # (G) nic0
+          - network: nms            # (G) nic0
         network_config:
           ethernets:
             enp1s0: {addresses: [10.215.100.101/24]} # (H)
@@ -168,7 +168,7 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
         cpu: "1000m"
         node_selector: {hostname: worker2}
         interfaces:
-          - network: default            # (J) nic0 (서비스망)
+          - network: nms            # (J) nic0 (서비스망)
           - network: storage            # (K) nic1 (스토리지망)
         network_config:                 # (L) 인터페이스별 IP 지정
           ethernets:
@@ -181,13 +181,13 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
     [3] INSTANCE & NETWORK CONFIGURATION
       [ INSTANCE: web-01 ]              <-- (F) Case 1
         Interfaces      :
-            - Name: nic0 | Network: default <-- (G)
+            - Name: nic0 | Network: nms <-- (G)
         IP Address      :
             - enp1s0 = 10.215.100.101/24    <-- (H) 단일 IP
 
       [ INSTANCE: web-02 ]              <-- (I) Case 2
         Interfaces      :
-            - Name: nic0 | Network: default <-- (J)
+            - Name: nic0 | Network: nms <-- (J)
             - Name: nic1 | Network: storage <-- (K) 멀티 네트워크
         IP Address      :
             - enp1s0 = 10.215.100.102/24    <-- (L) 서비스 IP
@@ -224,7 +224,7 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
       Spec File       : /home/core/v-auto/projects/opasnet/web.yaml
 
 [2] INFRASTRUCTURE CATALOG
-      default   [MULTUS] NAD: br-virt-net   Bridge: br-virt   <--- [Infra] 서비스 네트워크 확인
+      nms       [MULTUS] NAD: br-virt-net   Bridge: br-virt   <--- [Infra] 서비스 네트워크 확인
       storage   [MULTUS] NAD: br-storage-net Bridge: br-storage <--- [Infra] 스토리지 네트워크 확인
 
 [3] INSTANCE & NETWORK CONFIGURATION
@@ -232,7 +232,7 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
     Resources       : CPU=500m, Memory=1Gi
     Node Selector   : {'kubernetes.io/hostname': 'worker1'}
     Interfaces      :
-        - Name: nic0 | Network: default         <--- [Net] 기본 네트워크 연결
+        - Name: nic0 | Network: nms             <--- [Net] 기본 네트워크 연결
     IP Address      :
         - enp1s0 = 10.215.100.101/24            <--- [IP] 고정 IP (Cloud-Init)
 
@@ -240,7 +240,7 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
     Resources       : CPU=1, Memory=1Gi
     Node Selector   : {'kubernetes.io/hostname': 'worker2'}
     Interfaces      :
-        - Name: nic0 | Network: default
+        - Name: nic0 | Network: nms
         - Name: nic1 | Network: storage         <--- [Net] 추가 네트워크(스토리지) 연결
     IP Address      :
         - enp1s0 = 10.215.100.102/24            <--- [IP] 서비스망 IP
@@ -512,14 +512,4 @@ spec:
     }'
 ```
 
----
 
-## 5. 문제 해결 (Troubleshooting)
-**Q: `vman inspect`에서 IP가 `Auto/DHCP`로 나옵니다.**
-A: `web.yaml`의 `network_config` 들여쓰기나 문법을 확인하세요. `ethernets` 키 바로 아래에 인터페이스명(`enp1s0`)이 와야 합니다.
-
-**Q: `deploy` 중 권한 오류(Forbidden)가 발생합니다.**
-A: `oc login -u admin`으로 로그인되어 있는지 확인하세요. (`oc whoami` 로 확인 가능)
-
-**Q: VM은 Running인데 접속이 안 됩니다.**
-A: `vman status`로 IP가 정상 할당되었는지 확인하고, `cloud-init` 로그를 확인해야 합니다. (콘솔 접속 필요)

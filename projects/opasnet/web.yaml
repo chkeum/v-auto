@@ -5,7 +5,8 @@ infrastructure:
   networks:
     pod-net:
       type: pod
-    default:
+    nms:
+      type: multus
       bridge: br-virt
       nad_name: br-virt-net
       
