@@ -7,6 +7,7 @@ import subprocess
 import getpass
 import copy
 import ipaddress
+import base64
 from jinja2 import Environment, FileSystemLoader
 
 # Force unverified SSL for self-signed clusters
@@ -103,10 +104,16 @@ def load_config(project_name, spec_name):
     1. Defaults (Namespace=vm-{project}, CPU=2, Mem=4Gi)
     2. VM Spec (projects/<project>/specs/<spec>.yaml) - Overrides defaults
     """
-    spec_path = os.path.join(PROJECTS_DIR, project_name, 'specs', f"{spec_name}.yaml")
+    # Support both specs/ subdir (legacy) and project root (flat)
+    spec_path_legacy = os.path.join(PROJECTS_DIR, project_name, 'specs', f"{spec_name}.yaml")
+    spec_path_flat = os.path.join(PROJECTS_DIR, project_name, f"{spec_name}.yaml")
     
-    if not os.path.exists(spec_path):
-        print(f"Error: VM Spec not found at {spec_path}")
+    if os.path.exists(spec_path_flat):
+        spec_path = spec_path_flat
+    elif os.path.exists(spec_path_legacy):
+        spec_path = spec_path_legacy
+    else:
+        print(f"Error: VM Spec not found. Checked:\n - {spec_path_flat}\n - {spec_path_legacy}")
         sys.exit(1)
 
     spec_conf = load_yaml(spec_path)
@@ -164,9 +171,12 @@ def load_config(project_name, spec_name):
 
 def render_template(template_name, context):
     import json
+    import yaml
     env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
     # Add json filter for complex objects like affinity
     env.filters['to_json'] = lambda v: json.dumps(v)
+    # Add to_yaml filter
+    env.filters['to_yaml'] = lambda v: yaml.dump(v, default_flow_style=False, sort_keys=False).strip()
     template = env.get_template(template_name)
     return template.render(context)
 
@@ -311,7 +321,17 @@ def render_manifests(ctx):
             
         if 'bridge' in net:
              nad = yaml.safe_load(render_template('nad_template.yaml', nad_ctx))
-             nad.setdefault('metadata', {}).setdefault('labels', {}).update(labels)
+             
+             # Determine Label Scope
+             # If NAD name is explicitly defined (Shared), do NOT label with instance name
+             # This prevents 'delete instance' from deleting the shared NAD
+             nad_labels = labels.copy()
+             if 'nad_name' in net and net['nad_name'] == nad_name:
+                 # It's a shared/explicit NAD. Remove instance-specific label.
+                 if 'v-auto/name' in nad_labels:
+                     del nad_labels['v-auto/name']
+             
+             nad.setdefault('metadata', {}).setdefault('labels', {}).update(nad_labels)
              manifests.append(nad)
              
     # 3. DataVolume
@@ -359,9 +379,10 @@ def deploy_action(args):
             final_inputs.append(d)
             seen_keys.add(d['key'])
 
-    if not final_inputs and 'auth' in context:
-         if not context['auth'].get('password'):
-             final_inputs.append({'key': 'password', 'prompt': f"Password for {context['auth'].get('username', 'user')}"})
+    # Fallback prompt removed to allow cloud-init hardcoded passwords
+    # if not final_inputs and 'auth' in context:
+    #      if not context['auth'].get('password'):
+    #          final_inputs.append({'key': 'password', 'prompt': f"Password for {context['auth'].get('username', 'user')}"})
 
     if final_inputs:
         print("\n--- Required Inputs ---")
@@ -434,44 +455,81 @@ def deploy_action(args):
         print("Error: No valid networks resolving."); sys.exit(1)
 
     # --- Configuration Summary ---
-    print("\n" + "="*50)
-    print(f" [ Deployment Configuration Summary (v2.0) ] ")
-    print("="*50)
-    print(f" Project   : {project}")
-    print(f" Spec      : {spec}")
-    print(f" Namespace : {namespace}")
-    print(f" Instances : {len(instances)}")
-    for inst in instances:
-        print(f"   - {inst['name']} (IP: {inst.get('ip', 'Auto/DHCP')})")
+    print("\n" + "═"*60)
+    print(f" 🚀  DEPLOYMENT PLAN | Project: {project.upper()}")
+    print("═"*60)
     
-    # Identify users for summary
+    # 1. Scope
+    print(f" {'Scope':<15} : {spec} (Namespace: {namespace})")
+    print(f" {'Instances':<15} : {len(instances)} VMs")
+    
+    # Instance List with IP Resolution (Same logic as inspect)
+    for inst in instances:
+        # IP Resolution Logic
+        direct_ip = inst.get('ip')
+        nc_ips = []
+        nc = inst.get('network_config', context.get('network_config'))
+        if nc:
+            try:
+                if isinstance(nc, str): nc_data = yaml.safe_load(nc)
+                else: nc_data = nc
+                
+                ethernets = nc_data.get('network', {}).get('ethernets', {})
+                for eth, conf in ethernets.items():
+                    addrs = conf.get('addresses', [])
+                    for a in addrs:
+                         nc_ips.append(f"{eth}={a}")
+            except: pass
+            
+        print(f"\n   [ {inst['name']} ]")
+        if direct_ip:
+             print(f"       IP Address: {direct_ip} (Spec)")
+        elif nc_ips:
+             for ip_entry in nc_ips:
+                 print(f"       IP Address: {ip_entry}") # Newline for each IP
+        else:
+             print(f"       IP Address: Auto/DHCP")
+
+    # 2. Authentication
     users = [d['prompt'].split("'")[1] for d in discovered]
     if not users:
-        users = [context.get('auth', {}).get('username', 'N/A')]
-    print(f" Users     : {', '.join(users)}")
-    
-    # Image Resolution (Infra Catalog)
+        # Try to parse from cloud-init if discovery didn't find prompts (e.g. hardcoded)
+        try:
+             ci_data = yaml.safe_load(context.get('cloud_init', ''))
+             users = [u.get('name') for u in ci_data.get('users', [])]
+        except:
+             users = ['N/A']
+    print(f"\n {'Users':<15} : {', '.join(users)}")
+
+    # 3. Compute & Storage
     image_key = context.get('image')
     image_url = context.get('image_url')
     if image_key and image_key in infra_config['images']:
         image_info = infra_config['images'][image_key]
         image_url = image_info['url']
-        # Could also enforce min_cpu/mem here
-        print(f" Image     : {image_key} (Resolved: {image_url})")
+        print(f" {'Image':<15} : {image_key}")
     else:
-        print(f" Image     : {image_url} (Direct URL)")
-    # Store resolved url in context
-    context['image_url'] = image_url
+        print(f" {'Image':<15} : {image_url} (Direct/Raw)")
+    context['image_url'] = image_url # Store resolved
 
-    print(f" Disk Size : {context.get('disk_size', 'N/A')}")
-    print(f" StorageCls: {context.get('storage_class', 'N/A')}")
-    print("-" * 50)
-    print(" Base Interfaces (Infra Managed):")
-    for i, net in enumerate(base_interfaces):
-        net_type = net.get('type', 'multus')
-        nad_name = net.get('nad_name', 'N/A')
-        print(f"  NIC {i}: Type={net_type}, NAD={nad_name}, Subnet={net.get('ipam', {}).get('range', 'N/A')}")
-    print("="*50 + "\n")
+    print(f" {'Compute':<15} : CPU={context.get('cpu')} / MEM={context.get('memory')}")
+    sc = context.get('storage_class')
+    sc_display = sc if sc else "Cluster Default"
+    print(f" {'Storage':<15} : {context.get('disk_size', 'N/A')} (Class: {sc_display})")
+    
+    # 4. Networking (Catalog)
+    print("-" * 60)
+    print(" 📡  Infrastructure Catalog")
+    networks = infra_config.get('networks', {})
+    if not networks:
+         print("    (None defined)")
+    for net_name, net_conf in networks.items():
+        net_type = net_conf.get('type', 'multus').upper()
+        nad = net_conf.get('nad_name', '-')
+        subnet = net_conf.get('ipam', {}).get('range', '-') if isinstance(net_conf.get('ipam'), dict) else '-'
+        print(f"       {net_name:<15} [{net_type:<6}] NAD: {nad:<15} Subnet: {subnet}")
+
+    print("═"*60 + "\n")
     
     if not args.yes and not args.dry_run:
         if input("Proceed with dry-run/review? [Y/n]: ").lower() == 'n':
@@ -568,12 +626,47 @@ def deploy_action(args):
         manifests = render_manifests(instance_ctx)
         
         # Dry Run Output
-        print(f"\n[ Dry-Run: {vm_name} Manifests ]")
+        print(f"\n" + "═"*60)
+        print(f" 📂  Manifests Generated for Instance: {vm_name}")
+        print("═"*60)
         for m in manifests:
             kind = m.get('kind', 'Unknown')
             m_name = m.get('metadata', {}).get('name', 'Unknown')
-            print(f"\n--- Resource: {kind} / {m_name} ---")
-            print(yaml.dump(m))
+            
+            print(f"\n ─── [ {kind:<25} | Name: {m_name:<20} ] ───")
+            # Dump YAML with block style for readability
+            print(yaml.dump(m, default_flow_style=False, sort_keys=False))
+            
+            # Special Handling for Secrets: Decode Preview
+            if kind == 'Secret':
+                # Check for stringData (Plain) or data (Base64)
+                if 'stringData' in m:
+                    src = m['stringData']
+                    is_b64 = False
+                elif 'data' in m:
+                    src = m['data']
+                    is_b64 = True
+                else:
+                    src = {}
+
+                if src:
+                    print("     ▼ Secret Content Preview ▼")
+                    for key, val in src.items():
+                        if not val: continue
+                        try:
+                            if is_b64:
+                                decoded = base64.b64decode(val).decode('utf-8')
+                            else:
+                                decoded = val
+                            
+                            # Indent the content
+                            decoded_lines = [f"       {line}" for line in decoded.splitlines()]
+                            print(f"     [Key: {key}]")
+                            print("\n".join(decoded_lines))
+                        except:
+                            print(f"     [Key: {key}] (Binary/Non-UTF8 data)")
+            
+            print(" " + "-"*50)
             
         if args.dry_run:
             print(f" [Dry-Run] Skipping resource creation for {vm_name}.")
@@ -661,9 +754,9 @@ def delete_action(args):
         
     if found_by_name:
         print(f"\n[ 2. Legacy/Unmanaged (Matching Prefix: {base_name}-*) ]")
-        legacy_names = ",".join(found_by_name)
         cols = "KIND:.kind,NAME:.metadata.name,STATUS:.status.printableStatus,PHASE:.status.phase,READY:.status.ready"
-        table = run_command(['oc', 'get', legacy_names, '-n', namespace, '-o', f'custom-columns={cols}', '--ignore-not-found'])
+        # Pass names as individual arguments to avoid slash error in some OC versions
+        table = run_command(['oc', 'get'] + found_by_name + ['-n', namespace, '-o', f'custom-columns={cols}', '--ignore-not-found'])
         clean_print_table(table, "Resources")
 
     if args.yes:
@@ -848,83 +941,143 @@ def list_action(args):
 
 
 def inspect_action(args):
-    """Prints the effective configuration for the project/spec."""
+    """Prints the effective configuration for the project/spec in a detailed, aligned report."""
     project = args.project
     spec = args.spec
     
-    print(f"\nExample: Inspecting Config for [{project}/{spec}]")
-    print("=" * 60)
-    
-    # 1. Load Context (Convention + Spec)
+    # Load Context
     try:
         context = load_config(project, spec)
-        print(f" [1] Effective Context (Namespace: {context.get('namespace')})")
-        print(f"     - Resources: CPU={context.get('cpu')}, Mem={context.get('memory')}, Disk={context.get('disk_size')}")
-        print(f"     - Instances ({len(context.get('instances', []))}):")
-        for inst in context.get('instances', []):
-            print(f"       * {inst['name']} (IP: {inst.get('ip', 'Auto')})")
-            
-        # Cloud-Init Summary
-        ci_raw = context.get('cloud_init', '')
-        if ci_raw:
-            print(f"     - Cloud-Init (Summary):")
-            try:
-                # Attempt to parse YAML to show details
-                ci_data = yaml.safe_load(ci_raw)
-                
-                # Users
-                users = ci_data.get('users', [])
-                user_names = [u.get('name', 'unknown') for u in users]
-                print(f"       * Users: {', '.join(user_names)}")
-                
-                # Packages
-                pkgs = ci_data.get('packages', [])
-                if pkgs:
-                    print(f"       * Packages: {len(pkgs)} items")
-                
-                # RunCmd
-                cmds = ci_data.get('runcmd', [])
-                if cmds:
-                    print(f"       * RunCmd: {len(cmds)} commands")
-            except:
-                print(f"       * (Template content detected, raw size: {len(ci_raw)} bytes)")
-                
+        # Use centralized loader to respect Spec-defined infrastructure priority
+        infra_config = load_infrastructure_config(project, context)
     except Exception as e:
-        print(f" [ERROR] Failed to load spec: {e}")
-        return
+        print(f"[ERROR] Failed to load configuration: {e}")
+        sys.exit(1)
 
-    # 2. Load Infrastructure
-    print("-" * 60)
-    infra = load_infrastructure_config(project, context)
+    print("\n" + "═"*70)
+    print(f" 🔍  CONFIGURATION INSPECTION REPORT | {project.upper()}/{spec.upper()}")
+    print("═"*70)
     
-    print(f" [2] Infrastructure Catalog (projects/{project}/infrastructure/)")
-    
-    nets = infra.get('networks', {})
-    print(f"     - Networks ({len(nets)}):")
-    if not nets:
-        print("       (None defined. Create networks.yaml to add)")
-    for name, details in nets.items():
-        # Short summary of network
-        nads = details.get('nad_name', details.get('nad', 'N/A'))
-        if details.get('type') == 'pod':
-            nads = '(Pod Network)'
-        print(f"       * {name:<15} -> NAD: {nads}")
+    # [1] Project Context
+    print(f"\n [1] PROJECT CONTEXT")
+    print(f" {'Namespace':<20} : {context.get('namespace')}")
+    print(f" {'Resources Defaults':<20} : CPU={context.get('cpu')}, MEM={context.get('memory')}, Disk={context.get('disk_size')}")
+    print(" " + "-"*68)
 
-    imgs = infra.get('images', {})
-    print(f"     - Images ({len(imgs)}):")
-    if not imgs:
-        print("       (None defined. Create images.yaml to add)")
-    for name, details in imgs.items():
-        src = details.get('pvc_name')
-        if not src:
-            src = details.get('url', 'N/A') # Show URL if PVC not found
-        else:
-            src = f"PVC:{src}"
-            
-        print(f"       * {name:<15} -> Source: {src}")
+    # [2] Infrastructure (Network & Image)
+    print(f"\n [2] INFRASTRUCTURE CATALOG (Resolved)")
+    
+    # Networks
+    print(f" {'Networks':<20} :")
+    networks = infra_config.get('networks', {})
+    if networks:
+        for net_name, net_conf in networks.items():
+            net_type = net_conf.get('type', 'multus').upper()
+            nad = net_conf.get('nad_name', '-')
+            ipam = net_conf.get('ipam', {})
+            subnet = ipam.get('range', '-') if isinstance(ipam, dict) else '-'
+            bridge = net_conf.get('bridge', '-')
+            print(f"       {net_name:<15} [{net_type:<6}] NAD: {nad:<15} Bridge: {bridge:<12} Subnet: {subnet}")
+    else:
+        print("       (No networks defined)")
+
+    # Images
+    print(f" {'Images':<20} :")
+    images = infra_config.get('images', {})
+    if images:
+        for img_name, img_conf in images.items():
+            url = img_conf.get('url', 'N/A')
+            print(f"       {img_name:<15} -> {url}")
+    else:
+        print("       (No images defined)")
+    print(" " + "-"*68)
+
+    # [3] Instance List & IP Plan
+    print(f"\n [3] INSTANCE DEFINITIONS (Total: {len(context.get('instances', []))})")
+    
+    for idx, inst in enumerate(context.get('instances', [])):
+        print(f"\n   [ INSTANCE: {inst['name']} ]")
         
-    print("=" * 60)
-    print("Ready to deploy? Run with 'deploy' action.\n")
+        # CPU/Mem Override Check
+        override_cpu = inst.get('cpu')
+        override_mem = inst.get('memory')
+        specs = f"Default ({context.get('cpu')}vCPU/{context.get('memory')})"
+        if override_cpu or override_mem:
+            specs = f"Override ({override_cpu or context.get('cpu')}vCPU / {override_mem or context.get('memory')})"
+        print(f"       {'Specs':<15} : {specs}")
+
+        # IP Resolution Logic (Check network_config)
+        # 1. Check direct 'ip' field
+        direct_ip = inst.get('ip')
+        
+        # 2. Check network_config
+        nc_ips = []
+        nc = inst.get('network_config', context.get('network_config')) # Instance Override or Common
+        if nc:
+            try:
+                # If it's a dict, use it. If str, parse it.
+                if isinstance(nc, str):
+                    nc_data = yaml.safe_load(nc)
+                else:
+                    nc_data = nc
+                
+                ethernets = nc_data.get('network', {}).get('ethernets', {})
+                for eth, conf in ethernets.items():
+                    addrs = conf.get('addresses', [])
+                    for a in addrs:
+                        nc_ips.append(f"{eth} = {a}") # Spaces for readability
+            except:
+                pass
+        
+        # IP Display Strategy
+        print(f"       {'IP Address':<15} :")
+        if direct_ip:
+             print(f"           - {direct_ip} (Spec)")
+        elif nc_ips:
+             for ip_entry in nc_ips:
+                 print(f"           - {ip_entry}") # Newline for each IP
+             print(f"             (Cloud-Init Override)")
+        else:
+             print(f"           - Auto/DHCP")
+        
+        # Interfaces
+        if 'interfaces' in inst:
+             print(f"       {'Interfaces':<15} : {', '.join([i['network'] for i in inst['interfaces']])}")
+
+    print(" " + "-"*68)
+
+    # [4] Cloud-Init Configuration (User-Data)
+    print(f"\n [4] CLOUD-INIT CONFIGURATION (User-Data Template)")
+    
+    ci_raw = context.get('cloud_init', '')
+    if ci_raw:
+        try:
+            ci_data = yaml.safe_load(ci_raw)
+            
+            # Users
+            users = ci_data.get('users', [])
+            print(f"      {'Users':<15} :")
+            for u in users:
+                print(f"        - {u.get('name')} (Groups: {u.get('groups', [])})")
+                
+            # Packages
+            pkgs = ci_data.get('packages', [])
+            if pkgs:
+                 print(f"      {'Packages':<15} : {', '.join(pkgs)}")
+            
+            # RunCmd (Preview first 3/all)
+            cmds = ci_data.get('runcmd', [])
+            if cmds:
+                print(f"      {'RunCmd':<15} : ({len(cmds)} commands)")
+                for c in cmds:
+                    print(f"        $ {c}")
+        except Exception as e:
+            print(f"      (Failed to parse Cloud-Init YAML: {e})")
+            print(f"      Raw content length: {len(ci_raw)} bytes")
+    else:
+        print("      (No cloud-init defined)")
+
+    print("\n" + "═"*70 + "\n")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -933,25 +1086,25 @@ def main():
         epilog="""
 Examples:
   # Deploy a specific spec for a project
-  python3 vm_manager.py opasnet web deploy
+  ./vman opasnet web deploy
 
   # Deploy with specific replica count and flag-based arguments
-  python3 vm_manager.py --project opasnet --spec db deploy --replicas 3
+  ./vman --project opasnet --spec db deploy --replicas 3
 
   # Deploy/Recover a specific VM instance only
-  python3 vm_manager.py opasnet web deploy --target web-02
+  ./vman opasnet web deploy --target web-02
 
   # Delete all resources associated with a specific spec
-  python3 vm_manager.py opasnet web delete
+  ./vman opasnet web delete
 
   # Delete a specific VM instance only
-  python3 vm_manager.py opasnet web delete --target web-01
+  ./vman opasnet web delete --target web-01
 
   # List current VMs and their status
-  python3 vm_manager.py opasnet web status
+  ./vman opasnet web status
 
   # Check status of a specific VM instance
-  python3 vm_manager.py opasnet web status --target web-01
+  ./vman opasnet web status --target web-01
 """
     )
     
@@ -991,11 +1144,15 @@ Examples:
     for p in args.args_pos:
         if p in action_keywords and not action:
             action = p
-            break
+            continue
+            
+        # Support 'project/spec' syntax
+        if '/' in p and not project and not spec:
+            parts = p.split('/', 1)
+            project = parts[0]
+            spec = parts[1]
+            continue
 
-    # Map remaining positional args to missing variables
-    for p in args.args_pos:
-        if p == action: continue # Already mapped
         if not project:
             project = p
         elif not spec:
@@ -1014,7 +1171,7 @@ Examples:
         # Intelligent Hint
         if args.target and not action:
             print("\n[HINT] You provided '--target' but no action. Did you mean 'delete'?")
-            print(f"       Try: python3 vm_manager.py {project or '<project>'} {spec or '<spec>'} delete --target {args.target}")
+            print(f"       Try: ./vman {project or '<project>'} {spec or '<spec>'} delete --target {args.target}")
         
         print("\nRun with '-h' for full help and examples.")
         sys.exit(1)

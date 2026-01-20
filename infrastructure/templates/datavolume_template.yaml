@@ -6,7 +6,9 @@ metadata:
   annotations:
     cdi.kubevirt.io/storage.bind.immediate.requested: "true"
     {% if node_selector %}
-    cdi.kubevirt.io/storage.node.selector: "{{ node_selector.key }}={{ node_selector.value }}"
+    {% for k, v in node_selector.items() %}
+    cdi.kubevirt.io/storage.node.selector: "{{ k }}={{ v }}"
+    {% endfor %}
     {% endif %}
 spec:
   source:
@@ -18,7 +20,9 @@ spec:
     {% if node_selector %}
     selector:
       matchLabels:
-        {{ node_selector.key }}: {{ node_selector.value }}
+        {% for k, v in node_selector.items() %}
+        {{ k }}: {{ v }}
+        {% endfor %}
     {% endif %}
     storageClassName: {{ storage_class }}
     resources:

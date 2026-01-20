@@ -12,13 +12,13 @@
 ### 1️⃣ 설정 확인 (Inspect)
 "내 서버가 어떻게 배포될지 미리 보고 싶어."
 ```bash
-python3 vm_manager.py opasnet web inspect
+./vman opasnet web inspect
 ```
 
 ### 2️⃣ 배포 (Deploy)
 "opasnet 프로젝트의 web 스펙을 배포해줘."
 ```bash
-python3 vm_manager.py opasnet web deploy
+./vman opasnet web deploy
 ```
 > **팁 1**: 실행하면 비밀번호를 물어봅니다. 배포할 VM의 관리자 `admin` 계정 비밀번호를 입력하세요.
 > **팁 2**: `--dry-run` 옵션을 붙이면 실제로 배포하지 않고, 생성될 YAML 파일(Template 결과)만 출력해줍니다.
@@ -26,20 +26,20 @@ python3 vm_manager.py opasnet web deploy
 ### 3️⃣ 확인 (Status)
 "내 서버 잘 떴니? IP는 뭐야?"
 ```bash
-python3 vm_manager.py opasnet web status
+./vman opasnet web status
 ```
 
 ### 4️⃣ 삭제 (Delete)
 "이제 필요 없어. 다 지워줘."
 ```bash
-python3 vm_manager.py opasnet web delete
+./vman opasnet web delete
 ```
 
 ---
 
 ## 2. 나만의 서버 정의하기 (Spec 작성)
 
-여러분이 건드려야 할 파일은 딱 하나입니다: **`projects/내프로젝트/specs/서버이름.yaml`**
+여러분이 건드려야 할 파일은 딱 하나입니다: **`projects/내프로젝트/서버이름.yaml`**
 
 ### 📝 작성 예시 (`web.yaml`)
 아래 내용을 복사해서 쓰세요.
@@ -129,7 +129,7 @@ A. 운영팀 공지사항이나 `infrastructure/images.yaml` (읽기 전용) 파
 **Q. 특정 서버 하나만 다시 배포하고 싶어요.**
 A. `--target` 옵션을 쓰세요. 나머지는 건드리지 않고 딱 걔만 고칩니다.
 ```bash
-python3 vm_manager.py opasnet web deploy --target web-02
+./vman opasnet web deploy --target web-02
 ```
 
 ---
@@ -140,7 +140,7 @@ python3 vm_manager.py opasnet web deploy --target web-02
 
 ### 1️⃣ 삭제 (Cleanup)
 ```text
-$ python3 vm_manager.py opasnet web delete
+$ ./vman opasnet web delete
 Gathering resources for deletion in namespace 'vm-opasnet'...
 Are you sure you want to proceed with deletion? [y/N]: y
 Starting deletion process...
@@ -150,7 +150,7 @@ Starting deletion process...
 
 ### 2️⃣ 배포 (Deploy) - v2.0
 ```text
-$ python3 vm_manager.py opasnet web deploy --yes
+$ ./vman opasnet web deploy --yes
 Loading configuration for Project: opasnet, Spec: web...
 
 ==================================================
@@ -181,7 +181,7 @@ Applying resources for web-01...
 
 ### 3️⃣ 상태 확인 (Status)
 ```text
-$ python3 vm_manager.py opasnet web status
+$ ./vman opasnet web status
 
 [ Detailed Status Diagnostic: opasnet/web ]
 Target Namespace: vm-opasnet

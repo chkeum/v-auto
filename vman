@@ -1,0 +1,7 @@
+#!/bin/bash
+# vman: Wrapper for vm_manager.py (Virtual Manager)
+# Usage: ./vman <project> <spec> <action> [target] [flags...]
+# This script passes all arguments directly to vm_manager.py
+# Example: ./vman opasnet web deploy --dry-run
+
+python3 vm_manager.py "$@"
