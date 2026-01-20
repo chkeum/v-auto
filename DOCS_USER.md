@@ -339,10 +339,10 @@ VM의 사양, 디스크 마운트, 네트워크 연결을 정의하는 핵심 �
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: {{ vm_name }}                # <--- instances[].name (예: web-01)
-  namespace: {{ namespace }}         # <--- vm-[project] (예: vm-opasnet)
+  name: {{ vm_name }}                # <--- [web.yaml] instances > name (VM 이름)
+  namespace: {{ namespace }}         # <--- [CLI] vm-[project] (자동생성)
 spec:
-  running: true                      # <--- 배포 시 즉시 시작
+  running: true
   template:
     metadata:
       labels:
@@ -350,16 +350,16 @@ spec:
     spec:
       domain:
         devices:
-          disks:                     # [디스크 연결 정의]
+          disks:
             - disk:
                 bus: virtio
-              name: root-disk        # 부팅 디스크
+              name: root-disk
             - disk:
                 bus: virtio
-              name: cloudinitdisk    # 초기화 ISO
-          interfaces:                # [네트워크 인터페이스 정의]
+              name: cloudinitdisk
+          interfaces:
           {% for iface in interfaces %}
-          - name: {{ iface.name }}   # <--- (자동생성) nic0, nic1...
+          - name: {{ iface.name }}   # <--- [Auto] nic0, nic1... (자동 순차부여)
             {% if iface.type == 'pod' %}
             masquerade: {}           # <--- Pod Network 모드
             {% else %}
@@ -368,26 +368,26 @@ spec:
           {% endfor %}
         resources:
           requests:
-            cpu: {{ cpu }}           # <--- instances[].cpu (or common.cpu)
-            memory: {{ memory }}     # <--- instances[].memory (or common.memory)
-      networks:                      # [네트워크 연결 대상]
+            cpu: {{ cpu }}           # <--- [web.yaml] instances > cpu (또는 common.cpu)
+            memory: {{ memory }}     # <--- [web.yaml] instances > memory (또는 common.memory)
+      networks:
       {% for iface in interfaces %}
       - name: {{ iface.name }} 
         {% if iface.type == 'pod' %}
         pod: {}
         {% else %}
         multus:
-          networkName: {{ iface.nad_ref }} # <--- infrastructure.networks[].nad_name
+          networkName: {{ iface.nad_ref }} # <--- [web.yaml] infrastructure > networks > nad_name
         {% endif %}
       {% endfor %}
       volumes:
         - name: root-disk
           dataVolume:
-            name: {{ vm_name }}-root-disk   # <--- 연결될 DataVolume 이름
+            name: {{ vm_name }}-root-disk
         - name: cloudinitdisk
           cloudInitNoCloud:
             secretRef:
-              name: {{ vm_name }}-cloud-init # <--- 연결될 Secret 이름
+              name: {{ vm_name }}-cloud-init
 ```
 
 **2. secret_template.yaml (Cloud-Init)**
@@ -402,11 +402,11 @@ type: Opaque
 stringData:
   userData: |
     {% if cloud_init_content %}
-    {{ cloud_init_content | indent(4) }} # <--- web.yaml: cloud_init 전체 내용
+    {{ cloud_init_content | indent(4) }} # <--- [web.yaml] cloud_init (전체 내용 삽입)
     {% endif %}
   {% if network_config %}
   networkData: |
-    {{ network_config | to_yaml | indent(4) }} # <--- instances[].network_config (고정 IP 설정 등)
+    {{ network_config | to_yaml | indent(4) }} # <--- [web.yaml] instances > network_config (Netplan)
   {% endif %}
 ```
 
@@ -416,19 +416,19 @@ VM 부팅에 필요한 OS 이미지를 다운로드하고 PVC(볼륨)를 생성�
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
-  name: {{ vm_name }}-root-disk      # <--- VM에 연결될 디스크 이름
+  name: {{ vm_name }}-root-disk
   namespace: {{ namespace }}
 spec:
   source:
     http:
-      url: {{ image_url }}           # <--- infrastructure.images[].url (이미지 소스)
+      url: {{ image_url }}           # <--- [web.yaml] infrastructure > images > url
   pvc:
     accessModes:
-      - {{ access_mode }}            # <--- 기본값: ReadWriteOnce
-    storageClassName: {{ storage_class }} # <--- common.storage_class (스토리지 클래스)
+      - {{ access_mode }}            # <--- [System] ReadWriteOnce (기본값)
+    storageClassName: {{ storage_class }} # <--- [web.yaml] common > storage_class
     resources:
       requests:
-        storage: {{ disk_size }}     # <--- common.disk_size (디스크 크기)
+        storage: {{ disk_size }}     # <--- [web.yaml] common > disk_size
 ```
 
 **4. nad_template.yaml (NetworkAttachmentDefinition)**
@@ -437,16 +437,16 @@ spec:
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
-  name: {{ nad_name }}               # <--- infrastructure.networks[].nad_name
+  name: {{ nad_name }}               # <--- [web.yaml] infrastructure > networks > nad_name
   namespace: {{ namespace }}
 spec:
   config: '{
       "cniVersion": "0.3.1",
       "name": "{{ nad_name }}",
-      "type": "bridge",              # <--- Linux Bridge CNI 사용
-      "bridge": "{{ bridge }}"       # <--- infrastructure.networks[].bridge (물리 브리지명)
+      "type": "bridge",
+      "bridge": "{{ bridge }}"       # <--- [web.yaml] infrastructure > networks > bridge
       {% if ipam %}
-      , "ipam": {{ ipam }}           # <--- IP 관리 설정 (옵션)
+      , "ipam": {{ ipam }}
       {% endif %}
     }'
 ```
