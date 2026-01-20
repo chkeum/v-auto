@@ -29,7 +29,7 @@
     *   **K8s Interaction**: `oc` CLI를 호출하여 리소스를 생성(`apply`), 조회(`get`), 삭제(`delete`) 합니다.
 
 #### 2. 템플릿 시스템 (Infrastructure as Code)
-모든 리소스는 `infrastructure/templates/` 디렉토리 내의 Jinja2 템플릿으로 정의됩니다.
+모든 리소스는 `templates/` 디렉토리 내의 Jinja2 템플릿으로 정의됩니다.
 이 파일을 수정하면 **모든 배포되는 VM의 표준 형상이 변경**됩니다.
 
 *   `vm_template.yaml`: **VirtualMachine** 리소스 (CPU, Mem, Cloud-Init 연결)

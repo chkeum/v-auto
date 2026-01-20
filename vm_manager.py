@@ -22,7 +22,7 @@ else:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECTS_DIR = os.path.join(BASE_DIR, 'projects')
 INFRA_DIR = os.path.join(BASE_DIR, 'infrastructure')
-TEMPLATES_DIR = os.path.join(INFRA_DIR, 'templates') 
+TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates') 
 
 def run_command(cmd, input_data=None):
     """Executes a shell command and returns stdout."""

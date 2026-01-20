@@ -49,8 +49,8 @@ graph LR
 *   **`vman`**: 실행 스크립트 (모든 명령의 진입점)
 *   **`projects/`**: 프로젝트별 스펙 파일 저장소
     *   `opasnet/web.yaml`: (예시) Opasnet 프로젝트의 Web 서비스 스펙
-*   **`infrastructure/`**: 공통 템플릿 및 설정
-    *   `templates/*.yaml`: 리소스 생성용 Jinja2 템플릿 (수정 금지)
+*   **`templates/`**: 리소스 생성용 Jinja2 템플릿 (수정 금지)
+    *   `vm_template.yaml`, `secret_template.yaml` 등
 
 ---
 
@@ -182,7 +182,34 @@ instances:
 
 ---
 
-## 5. 문제 해결 (Troubleshooting)
+## 5. 검증된 고급 시나리오 (Verified Scenarios)
+
+다음은 실제 테스트 및 검증이 완료된 고급 구성 사례입니다.
+
+### 5.1 다중 계정 설정 (Multiple Accounts)
+하나의 VM에 여러 사용자를 생성하고 각각 비밀번호를 설정할 수 있습니다.
+(`cloud_init` 항목을 통해 제어)
+*   **예시**: 관리자(`core`)와 서비스 계정(`suser`) 동시 생성
+*   **참고**: `chpasswd` 리스트에 `ID:Password` 형식으로 나열하면 자동으로 적용됩니다.
+
+### 5.2 다중 네트워크 (Multiple Networks / Multi-NIC)
+하나의 VM에 여러 개의 네트워크 인터페이스를 연결할 수 있습니다.
+(`instances[].interfaces` 및 `network_config` 활용)
+*   **예시**: `web-02` 인스턴스
+    *   `nic0`: 서비스망 (`defaut` -> `br-virt`)
+    *   `nic1`: 스토리지망 (`storage` -> `br-storage`)
+*   **검증**: `vman status` 실행 시 IP가 두 개의 인터페이스(`enp1s0`, `enp2s0`)에 각각 할당된 것을 확인했습니다.
+
+### 5.3 다중 인스턴스 배포 (Multiple Instances)
+하나의 스펙 파일(`web.yaml`)로 서로 다른 설정을 가진 여러 VM을 동시에 배포할 수 있습니다.
+*   **예시**:
+    *   `web-01`: 0.5 vCPU, 단일망, Worker1 노드 고정
+    *   `web-02`: 1.0 vCPU, 이중망, Worker2 노드 고정
+*   **검증**: `deploy` 한 번으로 두 VM이 독립적인 설정(IP, Node, Resource)으로 생성됨을 확인했습니다.
+
+---
+
+## 6. 문제 해결 (Troubleshooting)
 
 **Q: `vman inspect`에서 IP가 `Auto/DHCP`로 나옵니다.**
 A: `web.yaml`의 `network_config` 들여쓰기나 문법을 확인하세요. `ethernets` 키 바로 아래에 인터페이스명(`enp1s0`)이 와야 합니다.
