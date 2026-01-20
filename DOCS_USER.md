@@ -195,19 +195,69 @@ VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워�
 ```bash
 ./vman opasnet web inspect
 ```
+**[출력 예시]**:
+```text
+================================================================================
+[ v-auto ] VM Specification Inspector
+================================================================================
+[1] PROJECT INFORMATION
+      Project         : opasnet
+      Service         : web
+      Spec File       : /home/core/v-auto/projects/opasnet/web.yaml
 
-**확인 포인트**:
-1.  **IP Address**: `Auto/DHCP`가 아닌 `10.215.100.101/24` 처럼 고정 IP가 잘 파싱되는지 확인.
-2.  **Infrastructure Catalog**: `NAD`와 `Bridge` 정보가 올바르게 매핑되었는지 확인.
+[2] INFRASTRUCTURE CATALOG
+      default   [MULTUS] NAD: br-virt-net   Bridge: br-virt
+      storage   [MULTUS] NAD: br-storage-net   Bridge: br-storage
+
+[3] INSTANCE & NETWORK CONFIGURATION
+  [ INSTANCE: web-01 ]
+    Resources       : CPU=500m, Memory=1Gi
+    Node Selector   : {'kubernetes.io/hostname': 'worker1'}
+    Interfaces      :
+        - Name: nic0 | Network: default
+    IP Address      :
+        - enp1s0 = 10.215.100.101/24
+          (Cloud-Init Override)
+
+[4] CLOUD-INIT CONFIGURATION
+      Users           :
+        - core
+        - suser
+```
+> **Check Point**: 네트워트(`[2]`), IP 주소(`[3]`), 사용자(`[4]`) 정보가 의도한 대로 표시되는지 확인하십시오.
 
 ### Step 2: 배포 (Deploy)
 검증이 끝난 스펙을 실제 클러스터에 반영합니다.
 
+**1. Dry-Run (모의 배포)**: 실제 반영 전 생성될 YAML을 미리 봅니다.
+```bash
+./vman opasnet web deploy --dry-run
+```
+**[출력 예시]**:
+```text
+[DRY-RUN] Generated Manifest for VirtualMachine: web-01
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: web-01
+  namespace: vm-opasnet
+...
+(전체 매니페스트 출력)
+```
+
+**2. Apply (실제 배포)**:
 ```bash
 ./vman opasnet web deploy
 ```
-*   **Dry-Run**: `--dry-run` 옵션을 추가하면 생성될 YAML을 미리 볼 수 있습니다.
-*   **Password**: `web.yaml`에 비밀번호가 하드코딩 되어 있으므로 별도 입력 없이 진행됩니다.
+**[출력 예시]**:
+```text
+[INFO] Applying configuration for web...
+[INFO] Namespace 'vm-opasnet' exists.
+[INFO] Secret 'web-01-cloud-init' created/configured.
+[INFO] DataVolume 'web-01-root-disk' created/configured.
+[INFO] VirtualMachine 'web-01' created/configured.
+[SUCCESS] Deployment/Update completed for web.
+```
 
 ### Step 3: 상태 확인 (Status)
 배포 후 VM이 정상 동작하는지 모니터링합니다.
@@ -215,10 +265,21 @@ VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워�
 ```bash
 ./vman opasnet web status
 ```
-**출력 해석**:
-*   **Virtual Machines**: `Ready: true`, `Status: Running` 이어야 합니다.
-*   **Active Runtime**: `VMI-IP` 항목에 할당된 IP가 표시되는지 확인합니다.
-*   **Recent Events**: `Warning`이나 `Error` 이벤트가 없는지 확인합니다.
+**[출력 예시]**:
+```text
+================================================================================
+[ v-auto ] VM Service Status : opasnet / web
+================================================================================
+NAME     NAMESPACE     STATUS    READY   NODE       VMI-IP
+web-01   vm-opasnet    Running   True    worker1    10.215.100.101
+
+[ Active Runtime Info ]
+  - web-01 : Phase=Running, IP=10.215.100.101, LaunchTime=2026-01-20T11:00:00Z
+
+[ Recent Events ]
+  No warning/error events found in namespace vm-opasnet.
+```
+> **Check Point**: `STATUS`가 `Running`이고 `VMI-IP`가 정상적으로 할당되었는지 확인하십시오.
 
 ### Step 4: 회수 (Delete)
 작업이 종료되거나 잘못 배포된 경우 리소스를 일괄 삭제합니다.
@@ -226,9 +287,21 @@ VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워�
 ```bash
 ./vman opasnet web delete
 ```
-*   해당 스펙으로 생성된 `VM`, `Disk`, `Network`, `Secret`을 모두 찾아 목록을 보여준 뒤 삭제합니다.
+**[출력 예시]**:
+```text
+[WARN] You are about to DELETE the following resources for service 'web':
+  - VirtualMachine: web-01
+  - DataVolume: web-01-root-disk
+  - Secret: web-01-cloud-init
+  - Service: (If any)
 
----
+Are you sure check? (y/n): y
+
+[INFO] Deleting VirtualMachine web-01...
+[INFO] Deleting DataVolume web-01-root-disk...
+[INFO] Deleting Secret web-01-cloud-init...
+[SUCCESS] All resources for 'web' have been deleted.
+```
 
 ## 4. 상세 동작 원리 (Deep Dive)
 
