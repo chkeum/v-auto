@@ -44,7 +44,7 @@ graph TD
     end
     
     %% 3. Output Resources
-    subgraph Resources["3. OpenShift Resources (Created)"]
+    subgraph Resources["3. OpenShift Resources"]
     direction TB
     VM["VirtualMachine<br>(vm_template.yaml)"]
     DV["DataVolume<br>(datavolume_template.yaml)"]
