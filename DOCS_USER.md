@@ -82,105 +82,89 @@ VM이 사용할 네트워크와 OS 이미지를 정의합니다.
     ```
 
 ### [B] Cloud-Init (계정 및 보안)
-VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워드 설정이 포함됩니다.
+VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용해 **단일 계정부터 다중 계정까지 통합 관리**합니다.
 
-**1. 사용자 설정 (`cloud_init`)**
+**1. 사용자 설정 (Users Configuration)**
 *   **YAML 입력 (`web.yaml`)**:
     ```yaml
     cloud_init: |
       chpasswd:
         list: |
-          core:core       # ID:PW
-          suser:suser
+          core:core       # (1) 관리자 계정 암호
+          suser:suser     # (2) 추가 서비스 계정 암호
+        expire: False
       users:
-        - name: core      # (D) 관리자 계정
-        - name: suser     # (E) 서비스 계정
+        - name: core      # (D) Primary User
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+        - name: suser     # (E) Secondary User
+          sudo: ALL=(ALL) NOPASSWD:ALL
     ```
+    > **Note**: 계정이 하나만 필요하면 `list`와 `users` 항목에 하나만 작성하면 됩니다.
+
 *   **검증 결과 (`vman inspect` Output)**:
     ```text
     [4] CLOUD-INIT CONFIGURATION
           Users           :
-            - core        <-- (D) 계정 확인
-            - suser       <-- (E) 계정 확인
+            - core        <-- (D) 계정
+            - suser       <-- (E) 계정
     ```
 
-### [C] Instances (인스턴스 상세)
-실제 배포할 VM들의 개별 설정을 정의합니다.
+### [C] Instances (인스턴스 및 네트워크)
+개별 VM의 사양과 네트워크 구성을 정의합니다. **리스트(`-`)** 형식이므로 여러 VM을 한 파일에 나열할 수 있습니다.
 
-**1. VM 기본 설정 및 노드 고정**
+**1. 통합 설정 예시 (Mixed Spec)**
+아래 예시는 **기본형(web-01)**과 **확장형(web-02)**을 한 파일에서 구성하는 방법을 보여줍니다.
+
 *   **YAML 입력 (`web.yaml`)**:
     ```yaml
     instances:
-      - name: web-01                    # (F) VM 이름
-        cpu: "500m"                     # (G) CPU 자원
-        node_selector:
-          kubernetes.io/hostname: worker1 # (H) 노드 고정
+      # [Case 1] 기본형: 단일 네트워크, 기본 사양
+      - name: web-01                    # (F)
+        cpu: "500m"
+        node_selector: {hostname: worker1}
+        interfaces:
+          - network: default            # (G) nic0
+        network_config:
+          ethernets:
+            enp1s0: {addresses: [10.215.100.101/24]} # (H)
+
+      # [Case 2] 확장형: 다중 네트워크(Multi-NIC), 고사양
+      - name: web-02                    # (I)
+        cpu: "1000m"
+        node_selector: {hostname: worker2}
+        interfaces:
+          - network: default            # (J) nic0 (서비스망)
+          - network: storage            # (K) nic1 (스토리지망)
+        network_config:                 # (L) 인터페이스별 IP 지정
+          ethernets:
+            enp1s0: {addresses: [10.215.100.102/24]}
+            enp2s0: {addresses: [192.168.10.50/24]}
     ```
+
 *   **검증 결과 (`vman inspect` Output)**:
     ```text
     [3] INSTANCE & NETWORK CONFIGURATION
-      [ INSTANCE: web-01 ]              <-- (F) 정의된 인스턴스
-        Node Selector   : {'kubernetes.io/hostname': 'worker1'}  <-- (H) 스케줄링 확인
-    ```
-
-**2. 네트워크 및 고정 IP 설정**
-각 인터페이스별로 IP를 지정합니다.
-*   **YAML 입력 (`web.yaml`)**:
-    ```yaml
-    instances:
-      - name: web-01
-        interfaces:
-          - network: default            # (I) 'A'에서 정의한 네트워크 사용
-        network_config:
-          ethernets:
-            enp1s0:                     # (J) 인터페이스명 (순서대로)
-              addresses: [10.215.100.101/24]   # (K) 고정 IP
-    ```
-*   **검증 결과 (`vman inspect` Output)**:
-    ```text
+      [ INSTANCE: web-01 ]              <-- (F) Case 1
         Interfaces      :
-            - Name: nic0 | Network: default <-- (I) 네트워크 연결 확인
+            - Name: nic0 | Network: default <-- (G)
         IP Address      :
-            - enp1s0 = 10.215.100.101/24    <-- (K) 설정된 고정 IP 확인
-              (Cloud-Init Override)
+            - enp1s0 = 10.215.100.101/24    <-- (H) 단일 IP
+
+      [ INSTANCE: web-02 ]              <-- (I) Case 2
+        Interfaces      :
+            - Name: nic0 | Network: default <-- (J)
+            - Name: nic1 | Network: storage <-- (K) 멀티 네트워크
+        IP Address      :
+            - enp1s0 = 10.215.100.102/24    <-- (L) 서비스 IP
+            - enp2s0 = 192.168.10.50/24     <-- (L) 스토리지 IP
     ```
 
-**3. 다중 인스턴스 배포 및 검증 (Multi-Instance)**
-*   **YAML 입력 (`web.yaml`)**:
-    ```yaml
-    instances:
-      - name: web-01                    # VM 1 
-        node_selector: {hostname: worker1}
-      - name: web-02                    # VM 2
-        node_selector: {hostname: worker2}
-    ```
-*   **검증 결과 (`vman status` Output)**:
+*   **상태 확인 (`vman status` Output)**:
     ```text
     NAME     STATUS    NODE      IP
-    web-01   Running   worker1   10.215.100.101  <-- 개별 배포 확인
+    web-01   Running   worker1   10.215.100.101
     web-02   Running   worker2   10.215.100.102
-    ```
-
-**4. 다중 네트워크 구성 (Multi-NIC)**
-*   **YAML 입력 (`web.yaml` - web-02)**:
-    ```yaml
-    interfaces:
-      - network: default   # nic0
-      - network: storage   # nic1
-    network_config:
-      ethernets:
-        enp1s0: {addresses: [10.215.100.102/24]}
-        enp2s0: {addresses: [192.168.10.50/24]}
-    ```
-*   **검증 결과 (`vman inspect` Output)**:
-    ```text
-    [ INSTANCE: web-02 ]
-        Interfaces      :
-            - Name: nic0 | Network: default
-            - Name: nic1 | Network: storage  <-- 두 번째 인터페이스
-        IP Address      :
-            - enp1s0 = 10.215.100.102/24
-            - enp2s0 = 192.168.10.50/24      <-- 스토리지망 IP 확인
     ```
 
 ---
@@ -321,6 +305,33 @@ Are you sure check? (y/n): y
 1.  **Inheritance (상속)**: `instances`의 설정은 `common` 설정을 덮어씁니다. (예: `web-01`이 `cpu`를 지정하면 `common.cpu`는 무시됨)
 2.  **Jinja2 Templating**: 파이썬 엔진이 YAML 값을 읽어 템플릿의 `{{ variable }}` 위치에 문자열을 치환해 넣습니다.
 3.  **Idempotency (멱등성)**: `apply` 명령을 사용하므로, 스펙이 변하지 않았다면 여러 번 실행해도 결과는 같습니다.
+
+### 4.3 템플릿 구조 상세 분석 (Template Structure)
+`templates/` 디렉토리 내의 파일들은 K8s 리소스의 뼈대입니다.
+
+**1. vm_template.yaml (가상머신 정의)**
+*   **역할**: VM의 CPU/Mem, 디스크 연결, 네트워크 인터페이스 정의
+*   **주요 포인트**:
+    *   `spec.running: true`: 배포 즉시 실행
+    *   `networkInterfaceMultus`: 다중 네트워크 연결(Multus) 지원
+    *   `cloudInitNoCloud`: Secret을 마운트하여 초기화 데이터 주입
+
+**2. secret_template.yaml (설정 주입)**
+*   **역할**: 보안이 필요한 Cloud-Init 스크립트와 네트워크 설정(Netplan) 저장
+*   **구성**:
+    *   `userData`: 계정/비밀번호 생성 (`cloud_init` 내용)
+    *   `networkData`: 고정 IP 설정 (`network_config` 내용)
+
+**3. datavolume_template.yaml (디스크/이미지)**
+*   **역할**: VM의 부팅 디스크 관리 (CDI - Containerized Data Importer)
+*   **동작**:
+    *   `spec.source.http.url`: `web.yaml`의 이미지 URL에서 OS 이미지를 다운로드하여 PVC 생성
+
+**4. nad_template.yaml (네트워크 연결)**
+*   **역할**: 물리 네트워크와 K8s 포드를 연결하는 다리 (Multus)
+*   **설정**:
+    *   `cnitype: bridge`: 리눅스 브리지 모드 사용
+    *   `ipam`: IP 주소 관리 설정 (DHCP 또는 Static)
 
 ---
 
