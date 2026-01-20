@@ -262,14 +262,50 @@ VM의 OS 계정과 비밀번호를 설정합니다. 리스트 문법을 사용�
 ```
 **[출력 예시]**:
 ```text
-[DRY-RUN] Generated Manifest for VirtualMachine: web-01
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine             <--- [DryRun] 생성될 리소스 타입 확인
+[DRY-RUN] Generated Manifests:
+
+1. NetworkAttachmentDefinition (NAD)
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
 metadata:
-  name: web-01                   <--- [DryRun] 리소스 이름
-  namespace: vm-opasnet          <--- [DryRun] 타겟 네임스페이스
+  name: br-virt-net              <--- [DryRun] 생성될 NAD 확인 (서비스망)
+  namespace: vm-opasnet
+
+2. Secret (Cloud-Init)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: web-01-cloud-init        <--- [DryRun] 사용자/네트워크 설정 데이터
+stringData:
+  userData: |
+    #cloud-config
+    users: ...
+  networkData: ...
+
+3. DataVolume (Disk)
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: web-01-root-disk         <--- [DryRun] 생성될 디스크 (PVC)
+spec:
+  source:
+    http:
+      url: http://.../ubuntu...  <--- [DryRun] 다운로드할 이미지 URL
+
+4. VirtualMachine (VM)
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: web-01                   <--- [DryRun] 최종 VM 객체 명세
+spec:
+  template:
+    spec:
+      domain:
+        resources:
+          requests:
+            cpu: 500m            <--- [DryRun] CPU 할당량 확인
 ...
-(전체 매니페스트 출력)
+(web-02 리소스 생략)
 ```
 
 **2. Apply (실제 배포)**:
