@@ -279,64 +279,81 @@ web-01   vm-opasnet    Running   True    worker1    10.215.100.101
   - Secret: web-01-cloud-init
   - Service: (If any)
 
-Are you sure check? (y/n): y
+Are you sure check? (y/n): y  <-- 사용자 확인 (실수 방지)
 
 [INFO] Deleting VirtualMachine web-01...
 [INFO] Deleting DataVolume web-01-root-disk...
 [INFO] Deleting Secret web-01-cloud-init...
-[SUCCESS] All resources for 'web' have been deleted.
+[SUCCESS] All resources for 'web' have been deleted. <-- 전체 리소스 삭제 완료
 ```
 
 ## 4. 상세 동작 원리 (Deep Dive)
 
 **"내가 쓴 YAML이 어떻게 K8s 리소스가 되나요?"**
 
-### 4.1 데이터 흐름 (Traceability)
-
-| YAML Spec (`web.yaml`) | 처리 엔진 (`vm_manager.py`) | 템플릿 (`templates/`) | OpenShift Resource |
-| :--- | :--- | :--- | :--- |
-| `instances[].name` | `ctx['vm_name']` | `vm_template.yaml`<br>`{{ vm_name }}` | **VirtualMachine**<br>`metadata.name` |
-| `instances[].cpu` | `ctx['cpu']` | `vm_template.yaml`<br>`{{ cpu }}` | **VirtualMachine**<br>`spec...requests.cpu` |
-| `infrastructure.images` | `ctx['image_url']` | `datavolume_template.yaml`<br>`{{ image_url }}` | **DataVolume**<br>`spec.source.http.url` |
-| `cloud_init` | `ctx['cloud_init']`<br>*(Base64 Encode)* | `secret_template.yaml`<br>`{{ userData }}` | **Secret**<br>`data.userData` |
-| `network_config` | `ctx['network_config']` | `secret_template.yaml`<br>`{{ networkData }}` | **Secret**<br>`data.networkData` |
-
-### 4.2 핵심 로직 설명
+### 4.1 핵심 로직 (Core Logic)
 1.  **Inheritance (상속)**: `instances`의 설정은 `common` 설정을 덮어씁니다. (예: `web-01`이 `cpu`를 지정하면 `common.cpu`는 무시됨)
 2.  **Jinja2 Templating**: 파이썬 엔진이 YAML 값을 읽어 템플릿의 `{{ variable }}` 위치에 문자열을 치환해 넣습니다.
 3.  **Idempotency (멱등성)**: `apply` 명령을 사용하므로, 스펙이 변하지 않았다면 여러 번 실행해도 결과는 같습니다.
 
-### 4.3 템플릿 구조 상세 분석 (Template Structure)
-`templates/` 디렉토리 내의 파일들은 K8s 리소스의 뼈대입니다.
+### 4.2 템플릿-변수 매핑 상세 (Template Variables)
+`templates/` 내의 파일들이 실제 `web.yaml` 설정과 어떻게 연결되는지 코드로 확인합니다.
 
-**1. vm_template.yaml (가상머신 정의)**
-*   **역할**: VM의 CPU/Mem, 디스크 연결, 네트워크 인터페이스 정의
-*   **주요 포인트**:
-    *   `spec.running: true`: 배포 즉시 실행
-    *   `networkInterfaceMultus`: 다중 네트워크 연결(Multus) 지원
-    *   `cloudInitNoCloud`: Secret을 마운트하여 초기화 데이터 주입
+**1. vm_template.yaml (VirtualMachine)**
+VM의 물리적 사양과 네트워크 연결을 정의합니다.
+```yaml
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ vm_name }}                # <--- instances[].name
+spec:
+  template:
+    spec:
+      domain:
+        resources:
+          requests:
+            cpu: {{ cpu }}           # <--- instances[].cpu (or common.cpu)
+            memory: {{ memory }}     # <--- instances[].memory (or common.memory)
+      networks:
+      {% for iface in interfaces %}
+      - name: {{ iface.name }}       # <--- 자동 생성 (nic0, nic1...)
+        multus:
+          networkName: {{ iface.nad_ref }} # <--- infrastructure.networks 매핑
+      {% endfor %}
+```
 
-**2. secret_template.yaml (설정 주입)**
-*   **역할**: 보안이 필요한 Cloud-Init 스크립트와 네트워크 설정(Netplan) 저장
-*   **구성**:
-    *   `userData`: 계정/비밀번호 생성 (`cloud_init` 내용)
-    *   `networkData`: 고정 IP 설정 (`network_config` 내용)
+**2. secret_template.yaml (Cloud-Init)**
+계정 정보와 네트워크 설정(Netplan)을 OS에 주입합니다.
+```yaml
+apiVersion: v1
+kind: Secret
+stringData:
+  userData: |
+    {{ cloud_init_content }}         # <--- cloud_init 전체 (계정, 패스워드)
+  networkData: |
+    {{ network_config | to_yaml }}   # <--- instances[].network_config (고정 IP)
+```
 
-**3. datavolume_template.yaml (디스크/이미지)**
-*   **역할**: VM의 부팅 디스크 관리 (CDI - Containerized Data Importer)
-*   **동작**:
-    *   `spec.source.http.url`: `web.yaml`의 이미지 URL에서 OS 이미지를 다운로드하여 PVC 생성
-
-**4. nad_template.yaml (네트워크 연결)**
-*   **역할**: 물리 네트워크와 K8s 포드를 연결하는 다리 (Multus)
-*   **설정**:
-    *   `cnitype: bridge`: 리눅스 브리지 모드 사용
-    *   `ipam`: IP 주소 관리 설정 (DHCP 또는 Static)
+**3. datavolume_template.yaml (Storage)**
+OS 이미지를 다운로드하여 디스크를 생성합니다.
+```yaml
+kind: DataVolume
+spec:
+  source:
+    http:
+      url: {{ image_url }}           # <--- infrastructure.images[].url
+  pvc:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: {{ disk_size }}     # <--- common.disk_size
+```
 
 ---
 
 ## 5. 문제 해결 (Troubleshooting)
-
+**Q: `vman inspect`에서 IP가 `Auto/DHCP`로 나옵니다.**
 A: `web.yaml`의 `network_config` 들여쓰기나 문법을 확인하세요. `ethernets` 키 바로 아래에 인터페이스명(`enp1s0`)이 와야 합니다.
 
 **Q: `deploy` 중 권한 오류(Forbidden)가 발생합니다.**
