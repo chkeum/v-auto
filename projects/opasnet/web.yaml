@@ -74,7 +74,7 @@ instances:
       kubernetes.io/hostname: worker1.chk-ocp.skt.local
     # 1. KubeVirt Attachment
     interfaces:
-      - network: default
+      - network: nms
     
     # 2. OS Configuration
     network_config:
@@ -93,7 +93,7 @@ instances:
       kubernetes.io/hostname: worker2.chk-ocp.skt.local
     # 1. KubeVirt Attachment (Which NADs to plug in?)
     interfaces:
-      - network: default
+      - network: nms
       - network: storage
     
     # 2. OS Configuration (Raw Netplan - Full Control)
