@@ -37,11 +37,11 @@ graph LR
     vAuto -->|Render| Tpl[Jinja2 Templates]
     vAuto -->|Apply| OCP[OpenShift Cluster]
     
-    subgraph "OpenShift Resources"
-    OCP --> VM[VirtualMachine]
-    OCP --> DV[DataVolume]
-    OCP --> Secret[Cloud-Init Secret]
-    OCP --> NAD[Network Attach Def]
+    subgraph "OpenShift Resources (Templates)"
+    OCP --> VM[VirtualMachine<br>(vm_template.yaml)]
+    OCP --> DV[DataVolume<br>(datavolume_template.yaml)]
+    OCP --> Secret[Secret<br>(secret_template.yaml)]
+    OCP --> NAD[NetworkAttachmentDefinition<br>(nad_template.yaml)]
     end
 ```
 
@@ -67,18 +67,25 @@ VM이 사용할 네트워크와 OS 이미지를 정의합니다.
     ```yaml
     infrastructure:
       networks:
+        pod-net:
+          type: pod            # (A) Pod 네트워크 (기본)
         default:
-          bridge: br-virt          # (A) 물리 브리지 인터페이스
-          nad_name: br-virt-net    # (B) OpenShift NAD 이름
+          bridge: br-virt      # (B) 서비스망 (L2 Bridge)
+          nad_name: br-virt-net
+        storage:
+          bridge: br-storage   # (C) 스토리지망
+          nad_name: br-storage-net
+
       images:
         ubuntu-22.04:
-          url: "http://.../ubuntu.qcow2" # (C) 이미지 소스
+          url: "http://.../ubuntu.qcow2" # (D) 이미지 소스
     ```
 *   **검증 결과 (`vman inspect` Output)**:
     ```text
     [2] INFRASTRUCTURE CATALOG
-          default   [MULTUS] NAD: br-virt-net   Bridge: br-virt
-          ^ (A) 네트워크 ID       ^ (B) 생성될 NAD    ^ (C) 연결될 브리지 
+          pod-net   [POD]    NAD: -             Bridge: -         <-- (A)
+          default   [MULTUS] NAD: br-virt-net   Bridge: br-virt   <-- (B)
+          storage   [MULTUS] NAD: br-storage-net Bridge: br-storage <-- (C)
     ```
 
 ### [B] Cloud-Init (계정 및 보안)
@@ -296,58 +303,125 @@ Are you sure check? (y/n): y  <-- 사용자 확인 (실수 방지)
 2.  **Jinja2 Templating**: 파이썬 엔진이 YAML 값을 읽어 템플릿의 `{{ variable }}` 위치에 문자열을 치환해 넣습니다.
 3.  **Idempotency (멱등성)**: `apply` 명령을 사용하므로, 스펙이 변하지 않았다면 여러 번 실행해도 결과는 같습니다.
 
-### 4.2 템플릿-변수 매핑 상세 (Template Variables)
-`templates/` 내의 파일들이 실제 `web.yaml` 설정과 어떻게 연결되는지 코드로 확인합니다.
+### 4.2 템플릿-변수 매핑 상세 (Template Mapping Analysis)
+`templates/` 디렉토리 내의 파일들은 K8s 리소스의 뼈대입니다. 각 파일의 **전체 내용**과 **변수 매핑 로직**을 상세히 분석합니다.
 
 **1. vm_template.yaml (VirtualMachine)**
-VM의 물리적 사양과 네트워크 연결을 정의합니다.
+VM의 사양, 디스크 마운트, 네트워크 연결을 정의하는 핵심 템플릿입니다.
 ```yaml
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: {{ vm_name }}                # <--- instances[].name
+  name: {{ vm_name }}                # <--- instances[].name (예: web-01)
+  namespace: {{ namespace }}         # <--- vm-[project] (예: vm-opasnet)
 spec:
+  running: true                      # <--- 배포 시 즉시 시작
   template:
+    metadata:
+      labels:
+        kubevirt.io/vm: {{ vm_name }}
     spec:
       domain:
+        devices:
+          disks:                     # [디스크 연결 정의]
+            - disk:
+                bus: virtio
+              name: root-disk        # 부팅 디스크
+            - disk:
+                bus: virtio
+              name: cloudinitdisk    # 초기화 ISO
+          interfaces:                # [네트워크 인터페이스 정의]
+          {% for iface in interfaces %}
+          - name: {{ iface.name }}   # <--- (자동생성) nic0, nic1...
+            {% if iface.type == 'pod' %}
+            masquerade: {}           # <--- Pod Network 모드
+            {% else %}
+            bridge: {}               # <--- Multus Bridge 모드 (대부분 여기 사용)
+            {% endif %} 
+          {% endfor %}
         resources:
           requests:
             cpu: {{ cpu }}           # <--- instances[].cpu (or common.cpu)
             memory: {{ memory }}     # <--- instances[].memory (or common.memory)
-      networks:
+      networks:                      # [네트워크 연결 대상]
       {% for iface in interfaces %}
-      - name: {{ iface.name }}       # <--- 자동 생성 (nic0, nic1...)
+      - name: {{ iface.name }} 
+        {% if iface.type == 'pod' %}
+        pod: {}
+        {% else %}
         multus:
-          networkName: {{ iface.nad_ref }} # <--- infrastructure.networks 매핑
+          networkName: {{ iface.nad_ref }} # <--- infrastructure.networks[].nad_name
+        {% endif %}
       {% endfor %}
+      volumes:
+        - name: root-disk
+          dataVolume:
+            name: {{ vm_name }}-root-disk   # <--- 연결될 DataVolume 이름
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef:
+              name: {{ vm_name }}-cloud-init # <--- 연결될 Secret 이름
 ```
 
 **2. secret_template.yaml (Cloud-Init)**
-계정 정보와 네트워크 설정(Netplan)을 OS에 주입합니다.
+계정 설정(`userData`)과 네트워크 설정(`networkData`)을 담고 있는 보안 리소스입니다.
 ```yaml
 apiVersion: v1
 kind: Secret
+metadata:
+  name: {{ vm_name }}-cloud-init
+  namespace: {{ namespace }}
+type: Opaque
 stringData:
   userData: |
-    {{ cloud_init_content }}         # <--- cloud_init 전체 (계정, 패스워드)
+    {% if cloud_init_content %}
+    {{ cloud_init_content | indent(4) }} # <--- web.yaml: cloud_init 전체 내용
+    {% endif %}
+  {% if network_config %}
   networkData: |
-    {{ network_config | to_yaml }}   # <--- instances[].network_config (고정 IP)
+    {{ network_config | to_yaml | indent(4) }} # <--- instances[].network_config (고정 IP 설정 등)
+  {% endif %}
 ```
 
-**3. datavolume_template.yaml (Storage)**
-OS 이미지를 다운로드하여 디스크를 생성합니다.
+**3. datavolume_template.yaml (DataVolume)**
+VM 부팅에 필요한 OS 이미지를 다운로드하고 PVC(볼륨)를 생성합니다.
 ```yaml
+apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
+metadata:
+  name: {{ vm_name }}-root-disk      # <--- VM에 연결될 디스크 이름
+  namespace: {{ namespace }}
 spec:
   source:
     http:
-      url: {{ image_url }}           # <--- infrastructure.images[].url
+      url: {{ image_url }}           # <--- infrastructure.images[].url (이미지 소스)
   pvc:
     accessModes:
-      - ReadWriteOnce
+      - {{ access_mode }}            # <--- 기본값: ReadWriteOnce
+    storageClassName: {{ storage_class }} # <--- common.storage_class (스토리지 클래스)
     resources:
       requests:
-        storage: {{ disk_size }}     # <--- common.disk_size
+        storage: {{ disk_size }}     # <--- common.disk_size (디스크 크기)
+```
+
+**4. nad_template.yaml (NetworkAttachmentDefinition)**
+물리 네트워크와 K8s를 연결하는 Multus 리소스입니다. (네트워크당 1개 생성)
+```yaml
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: {{ nad_name }}               # <--- infrastructure.networks[].nad_name
+  namespace: {{ namespace }}
+spec:
+  config: '{
+      "cniVersion": "0.3.1",
+      "name": "{{ nad_name }}",
+      "type": "bridge",              # <--- Linux Bridge CNI 사용
+      "bridge": "{{ bridge }}"       # <--- infrastructure.networks[].bridge (물리 브리지명)
+      {% if ipam %}
+      , "ipam": {{ ipam }}           # <--- IP 관리 설정 (옵션)
+      {% endif %}
+    }'
 ```
 
 ---
