@@ -38,10 +38,10 @@ graph LR
     vAuto -->|Apply| OCP[OpenShift Cluster]
     
     subgraph "OpenShift Resources (Templates)"
-    OCP --> VM[VirtualMachine<br>(vm_template.yaml)]
-    OCP --> DV[DataVolume<br>(datavolume_template.yaml)]
-    OCP --> Secret[Secret<br>(secret_template.yaml)]
-    OCP --> NAD[NetworkAttachmentDefinition<br>(nad_template.yaml)]
+    OCP --> VM["VirtualMachine<br>(vm_template.yaml)"]
+    OCP --> DV["DataVolume<br>(datavolume_template.yaml)"]
+    OCP --> Secret["Secret<br>(secret_template.yaml)"]
+    OCP --> NAD["NetworkAttachmentDefinition<br>(nad_template.yaml)"]
     end
 ```
 
