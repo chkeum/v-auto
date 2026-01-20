@@ -32,17 +32,29 @@
 ### 1.2 시스템 구조
 ```mermaid
 graph LR
-    User[Operator] -->|CMD: vman| vAuto[v-auto Engine]
-    vAuto -->|Read| Spec[Spec YAML]
-    vAuto -->|Render| Tpl[Jinja2 Templates]
-    vAuto -->|Apply| OCP[OpenShift Cluster]
-    
-    subgraph "OpenShift Resources (Templates)"
-    OCP --> VM["VirtualMachine<br>(vm_template.yaml)"]
-    OCP --> DV["DataVolume<br>(datavolume_template.yaml)"]
-    OCP --> Secret["Secret<br>(secret_template.yaml)"]
-    OCP --> NAD["NetworkAttachmentDefinition<br>(nad_template.yaml)"]
+    subgraph Inputs["1. Input Sources"]
+    Spec["Spec YAML<br>(Values: name, cpu...)"]
+    Tpl["Templates<br>(Structure: {{ name }}...)"]
     end
+
+    subgraph Engine["2. v-auto Engine"]
+    Render["Jinja2 Rendering<br>(Combine Data + Logic)"]
+    end
+    
+    subgraph Resources["3. OpenShift Resources (Created)"]
+    VM["VirtualMachine<br>(from vm_template)"]
+    DV["DataVolume<br>(from datavolume_template)"]
+    Secret["Secret<br>(from secret_template)"]
+    NAD["NetworkAttachmentDef<br>(from nad_template)"]
+    end
+    
+    Spec -->|Provide Data| Render
+    Tpl -->|Provide Base| Render
+    
+    Render -->|Generate| VM
+    Render -->|Generate| DV
+    Render -->|Generate| Secret
+    Render -->|Generate| NAD
 ```
 
 ### 1.3 작업 디렉토리 구조 (`/home/core/v-auto`)
