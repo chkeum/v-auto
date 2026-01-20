@@ -61,96 +61,126 @@ graph LR
 
 ### [A] Infrastructure (인프라 정의)
 VM이 사용할 네트워크와 OS 이미지를 정의합니다.
-```yaml
-infrastructure:
-  networks:
-    default:
-      bridge: br-virt          # 물리 브리지 인터페이스 (서버 구성에 따름)
-      nad_name: br-virt-net    # OpenShift에 생성될 NAD 리소스 이름
-    storage:
-      bridge: br-storage
-      nad_name: br-storage-net
-      
-  images:
-    ubuntu-22.04:
-      url: "http://10.215.1.240/.../ubuntu-22.04.qcow2" # 이미지 다운로드 경로
-```
+
+**1. 네트워크 및 이미지 정의 (`infrastructure`)**
+*   **YAML 입력 (`web.yaml`)**:
+    ```yaml
+    infrastructure:
+      networks:
+        default:
+          bridge: br-virt          # (A) 물리 브리지 인터페이스
+          nad_name: br-virt-net    # (B) OpenShift NAD 이름
+      images:
+        ubuntu-22.04:
+          url: "http://.../ubuntu.qcow2" # (C) 이미지 소스
+    ```
+*   **검증 결과 (`vman inspect` Output)**:
+    ```text
+    [2] INFRASTRUCTURE CATALOG
+          default   [MULTUS] NAD: br-virt-net   Bridge: br-virt
+          ^ (A) 네트워크 ID       ^ (B) 생성될 NAD    ^ (C) 연결될 브리지 
+    ```
 
 ### [B] Cloud-Init (계정 및 보안)
-VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워드 설정, 초기 명령어가 포함됩니다.
+VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워드 설정이 포함됩니다.
 
-**1. 다중 계정 설정 (Multiple Accounts)**
-여러 사용자를 동시에 생성하고 각각 권한을 부여할 수 있습니다.
+**1. 사용자 설정 (`cloud_init`)**
 *   **YAML 입력 (`web.yaml`)**:
     ```yaml
     cloud_init: |
       chpasswd:
         list: |
-          core:core       # ID:Password (운영 편의상 자동 설정)
-          suser:suser     # 추가 서비스 계정
-        expire: False
+          core:core       # ID:PW
+          suser:suser
       users:
-        - name: core      # 관리자 계정
-          sudo: ALL=(ALL) NOPASSWD:ALL
-          shell: /bin/bash
-        - name: suser     # 서비스 계정
-          sudo: ALL=(ALL) NOPASSWD:ALL
+        - name: core      # (D) 관리자 계정
+        - name: suser     # (E) 서비스 계정
     ```
 *   **검증 결과 (`vman inspect` Output)**:
     ```text
     [4] CLOUD-INIT CONFIGURATION
           Users           :
-            - core
-            - suser       <-- 두 계정이 모두 인식됨을 확인
+            - core        <-- (D) 계정 확인
+            - suser       <-- (E) 계정 확인
     ```
 
 ### [C] Instances (인스턴스 상세)
-실제 배포할 VM들의 개별 설정을 정의합니다. 가장 중요한 부분입니다.
+실제 배포할 VM들의 개별 설정을 정의합니다.
 
-**1. 다중 인스턴스 배포 (Multiple Instances)**
-하나의 스펙 파일로 서로 다른 설정을 가진 VM을 동시에 배포합니다.
+**1. VM 기본 설정 및 노드 고정**
 *   **YAML 입력 (`web.yaml`)**:
     ```yaml
     instances:
-      - name: web-01                    # (1) VM 1호기
-        cpu: "500m"                     #     자원 오버라이드
+      - name: web-01                    # (F) VM 이름
+        cpu: "500m"                     # (G) CPU 자원
         node_selector:
-          kubernetes.io/hostname: worker1 #     Worker1 고정
-      
-      - name: web-02                    # (2) VM 2호기
-        node_selector:
-          kubernetes.io/hostname: worker2 #     Worker2 고정
+          kubernetes.io/hostname: worker1 # (H) 노드 고정
+    ```
+*   **검증 결과 (`vman inspect` Output)**:
+    ```text
+    [3] INSTANCE & NETWORK CONFIGURATION
+      [ INSTANCE: web-01 ]              <-- (F) 정의된 인스턴스
+        Node Selector   : {'kubernetes.io/hostname': 'worker1'}  <-- (H) 스케줄링 확인
+    ```
+
+**2. 네트워크 및 고정 IP 설정**
+각 인터페이스별로 IP를 지정합니다.
+*   **YAML 입력 (`web.yaml`)**:
+    ```yaml
+    instances:
+      - name: web-01
+        interfaces:
+          - network: default            # (I) 'A'에서 정의한 네트워크 사용
+        network_config:
+          ethernets:
+            enp1s0:                     # (J) 인터페이스명 (순서대로)
+              addresses: [10.215.100.101/24]   # (K) 고정 IP
+    ```
+*   **검증 결과 (`vman inspect` Output)**:
+    ```text
+        Interfaces      :
+            - Name: nic0 | Network: default <-- (I) 네트워크 연결 확인
+        IP Address      :
+            - enp1s0 = 10.215.100.101/24    <-- (K) 설정된 고정 IP 확인
+              (Cloud-Init Override)
+    ```
+
+**3. 다중 인스턴스 배포 및 검증 (Multi-Instance)**
+*   **YAML 입력 (`web.yaml`)**:
+    ```yaml
+    instances:
+      - name: web-01                    # VM 1 
+        node_selector: {hostname: worker1}
+      - name: web-02                    # VM 2
+        node_selector: {hostname: worker2}
     ```
 *   **검증 결과 (`vman status` Output)**:
     ```text
-    NAME   STATUS    NODE
-    web-01 Running   worker1  <-- 설정대로 분산 배치됨
-    web-02 Running   worker2
+    NAME     STATUS    NODE      IP
+    web-01   Running   worker1   10.215.100.101  <-- 개별 배포 확인
+    web-02   Running   worker2   10.215.100.102
     ```
 
-**2. 다중 네트워크 (Multi-NIC)**
-하나의 VM에 여러 개의 네트워크 인터페이스를 연결할 수 있습니다.
-*   **YAML 입력 (`web.yaml` - `web-02` 예시)**:
+**4. 다중 네트워크 구성 (Multi-NIC)**
+*   **YAML 입력 (`web.yaml` - web-02)**:
     ```yaml
-    instances:
-      - name: web-02
-        interfaces:                     # (3) 연결할 네트워크망 선택
-          - network: default
-          - network: storage            #     추가 네트워크 연결
-          
-        network_config:                 # (4) IP 상세 정의
-          ethernets:
-            enp1s0:
-              addresses: [10.215.100.102/24]
-            enp2s0:
-              addresses: [192.168.10.50/24]  # 스토리지망 IP
+    interfaces:
+      - network: default   # nic0
+      - network: storage   # nic1
+    network_config:
+      ethernets:
+        enp1s0: {addresses: [10.215.100.102/24]}
+        enp2s0: {addresses: [192.168.10.50/24]}
     ```
 *   **검증 결과 (`vman inspect` Output)**:
     ```text
     [ INSTANCE: web-02 ]
+        Interfaces      :
+            - Name: nic0 | Network: default
+            - Name: nic1 | Network: storage  <-- 두 번째 인터페이스
         IP Address      :
             - enp1s0 = 10.215.100.102/24
-            - enp2s0 = 192.168.10.50/24     <-- 두 인터페이스 모두 인식 확인
+            - enp2s0 = 192.168.10.50/24      <-- 스토리지망 IP 확인
     ```
 
 ---
@@ -223,11 +253,6 @@ VM 시동 시 적용될 OS 설정을 정의합니다. 계정 생성, 패스워�
 
 ## 5. 문제 해결 (Troubleshooting)
 
----
-
-
-
-**Q: `vman inspect`에서 IP가 `Auto/DHCP`로 나옵니다.**
 A: `web.yaml`의 `network_config` 들여쓰기나 문법을 확인하세요. `ethernets` 키 바로 아래에 인터페이스명(`enp1s0`)이 와야 합니다.
 
 **Q: `deploy` 중 권한 오류(Forbidden)가 발생합니다.**
