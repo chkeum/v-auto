@@ -38,21 +38,12 @@ python3 -m venv venv
 
 ## 3. 실행 및 검증 (Operation)
 
-가상 환경의 파이썬 인터프리터를 사용하여 툴을 바로 실행합니다.
+설치가 완료된 후의 **모든 운영 절차(검증, 배포, 조회, 삭제)**는 사용자 매뉴얼을 따릅니다.
 
-### 3-1. 배포 명령 실행
-```bash
-# 별도의 venv 활성화(source) 없이 바로 실행하는 것을 권장합니다.
-./venv/bin/python3 vm_manager.py [project] [spec] deploy
-```
-
----
-
-## 4. 환경 최적화 팁
-
-- **Alias 설정**: 매번 긴 경로를 입력하는 대신 단축어를 등록하십시오.
-  `alias v-auto='/home/core/v-auto/venv/bin/python3 /home/core/v-auto/vm_manager.py'`
-- **Log 확인**: `oc get dv,vmi -n [namespace]`를 통해 리소스 생성 및 이미지 임포트 과정을 모니터링하십시오.
+👉 **[DOCS_USER.md](./DOCS_USER.md) 문서를 참조하십시오.**
+  - `vman` 스크립트 사용법
+  - 스펙 작성 및 검증 (`inspect`)
+  - 배포 및 상태 확인 (`deploy`, `status`)
 
 ---
 *Created for secure and reliable offline deployments.*
