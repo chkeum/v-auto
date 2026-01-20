@@ -315,16 +315,17 @@ spec:
 **[출력 예시]**:
 ```text
 [INFO] Applying configuration for web...
-[INFO] Namespace 'vm-opasnet' exists.
-[INFO] Secret 'web-01-cloud-init' created/configured.
-[INFO] DataVolume 'web-01-root-disk' created/configured.
-[INFO] VirtualMachine 'web-01' created/configured.    <--- [Flow] web-01 생성 완료
+[INFO] Namespace 'vm-opasnet' exists.                 <--- [Flow] 네임스페이스 준비 (기존 존재)
+
+[INFO] Secret 'web-01-cloud-init' created/configured. <--- [Flow] 1. Cloud-Init 보안 설정 생성 (계정/네트워크)
+[INFO] DataVolume 'web-01-root-disk' created/configured. <--- [Flow] 2. 부팅 디스크(PVC) 생성 요청
+[INFO] VirtualMachine 'web-01' created/configured.    <--- [Flow] 3. VM 객체 생성 (정의만 됨, 부팅 시작)
 
 [INFO] Secret 'web-02-cloud-init' created/configured.
 [INFO] DataVolume 'web-02-root-disk' created/configured.
-[INFO] VirtualMachine 'web-02' created/configured.    <--- [Flow] web-02 생성 완료
+[INFO] VirtualMachine 'web-02' created/configured.    <--- [Flow] * 인스턴스 반복 (web-02 처리 완료)
 
-[SUCCESS] Deployment/Update completed for web.        <--- [Result] 전체 배포 완료
+[SUCCESS] Deployment/Update completed for web.        <--- [Result] 모든 리소스가 클러스터에 반영됨
 ```
 
 ### Step 3: 상태 확인 (Status)
@@ -339,13 +340,17 @@ spec:
 [ v-auto ] VM Service Status : opasnet / web
 ================================================================================
 NAME     NAMESPACE     STATUS    READY   NODE       VMI-IP
-web-01   vm-opasnet    Running   True    worker1    10.215.100.101  <--- [Status] 실행 중인 노드 및 IP
+web-01   vm-opasnet    Running   True    worker1    10.215.100.101  <--- [Status] VM-01 정상 동작 중
+web-02   vm-opasnet    Running   True    worker2    10.215.100.102  <--- [Status] VM-02 정상 동작 중
 
 [ Active Runtime Info ]
-  - web-01 : Phase=Running, IP=10.215.100.101, LaunchTime=...       <--- [Detail] 상세 런타임 정보
+  - web-01 : Phase=Running, IP=10.215.100.101, LaunchTime=2026-01-20T11:00:00Z <--- [Detail] VM-01 상세 정보
+  - web-02 : Phase=Running, IP=10.215.100.102 (S: 192.168.10.50) ...           <--- [Detail] VM-02 상세 정보 (멀티 IP)
 
 [ Recent Events ]
-  No warning/error events found in namespace vm-opasnet.            <--- [Event] 최근 에러/경고 로그
+  - [Normal] Scheduled: Successfully assigned vm-opasnet/web-01 to worker1     <--- [Event] 스케줄링 성공 로그
+  - [Normal] Started: Started container compute                                <--- [Event] 컨테이너 시작 로그
+  No warning/error events found in namespace vm-opasnet.
 ```
 > **Check Point**: `STATUS`가 `Running`이고 `VMI-IP`가 정상적으로 할당되었는지 확인하십시오.
 
