@@ -1,0 +1,89 @@
+server:
+  name: "tcp-bridge"
+  version: "1.0.0"
+  environment: "development"
+  shutdown_timeout: "3s"
+
+tcp:
+  # External TCP servers (tcp-bridge connects as client)
+  endpoints:
+    - host: "127.0.0.1"
+      port: 8000
+      priority: 0  # Primary (highest priority)
+    - host: "127.0.0.1" 
+      port: 8000
+      priority: 1  # Secondary
+   # - host: "127.0.0.1"
+   #   port: 7070
+   #   priority: 2  # Tertiary
+  
+  connect_timeout: "5s"       # TCP 연결 시도 timeout (5초 내 연결 실패 시 connect failed)
+  write_timeout: "30s"        # 데이터 전송(Write) 작업 timeout
+  keep_alive: "30s"           # OS 레벨 TCP Keep-Alive 주기 (방화벽/NAT 타임아웃 방지)
+  
+  max_frame_size: 65535  # 64KB (프로토콜 스펙: Body Length는 uint16, NATS 메시지 최대 크기 고려)
+  frame_header_size: 8
+  handshake_timeout: "10s"
+  ping_timeout: "5s"           # PING 전송 후 PONG 대기 timeout
+  
+  # Handshake credentials
+  sys_id: "tcp-bridge-01"      # 접속하는 Peer Name
+  branch_name: "SS"            # 국사명 (SS: 성수, DS: 둔산, BR: 보라매)
+
+nats:
+  urls: 
+    - "nats://localhost:4222"
+  connect_timeout: "5s"
+  
+  external_req_subject: "external_req"  # NATS→TCP subject
+  
+  # Message Type 라우팅 설정 (4.1.1.d)
+  # 
+  # NATS → TCP: 요청 타입별 응답 타입 정의
+  # TCP → NATS: 요청 타입별 NATS subject 및 응답 타입 정의
+  # 
+  # 참고: Hello(0x01/0x02), Ping(0x03/0x04)은 TCP 연결 관리용이므로 설정 불필요
+  message_type_routing:
+    # NATS → TCP 방향
+    nats_to_tcp:
+      "05":                           # Subs-Change-Request
+        response_msg_type: "06"       # Subs-Change-Response
+      "09":                           # CellInfo-Noti-Request
+        response_msg_type: "0a"       # CellInfo-Noti-Response
+    
+    # TCP → NATS 방향
+    tcp_to_nats:
+      "07":                           # Subs-Info-Request
+        subject: "tcp.subs.info"
+        response_msg_type: "08"       # Subs-Info-Response
+      "0b":                           # Subs-Sync-Request
+        subject: "tcp.subs.sync"
+        response_msg_type: "0c"       # Subs-Sync-Response
+
+message_handler:
+  internal:  # NATS→TCP processing
+    # 각 시도별 TCP 응답 대기 시간 (이 시간 내 응답 없으면 재시도/failover)
+    response_timeout: "5s"      # RPC 요청의 응답 대기 timeout (per-attempt)
+                                # - 전송 성공 후 응답 수신까지 대기하는 시간
+                                # - 빠른 응답 감지를 위해 짧게 설정 (3-5s 권장)
+    
+    # 같은 connection 재시도 설정 (VIP 절체 대응)
+    retry_attempts: 10           # 같은 priority에서 재시도 횟수
+    
+    # 참고: 최대 소요 시간은 자동 계산됨
+    # = endpoints × retry_attempts × response_timeout
+    # ≈ 1 × 10 × 5s = 50초 (모든 priority connection 실패 시)
+  
+  external:  # TCP→NATS processing (NATS Request/Response)
+    timeout: "30s"              # NATS Request 응답 대기 시간
+                                # - TCP에서 받은 요청을 NATS로 전송 후 응답 대기
+                                # - NATS는 자체 고가용성 클러스터 구성으로 재시도 불필요
+
+metrics:
+  enabled: true
+  port: 8080
+  path: "/metrics"
+
+logging:
+  level: "debug"  # debug, info, warn, error
+  format: "json"  # json, text

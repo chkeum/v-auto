@@ -1,0 +1,51 @@
+# Binaries
+bin/
+tcp-bridge
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*.test
+coverage.out
+coverage.html
+
+# Development
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Documentation
+README*.md
+*.md
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+vendor/
+
+# Simulator (not needed in Docker image)
+simulator/
+
+# Monitoring (not needed in Docker image)
+monitoring/
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Makefile
+Makefile
+
+# Draw.io files
+*.xml

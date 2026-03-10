@@ -1,0 +1,459 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.5.2 Chrome/142.0.7444.265 Electron/39.6.1 Safari/537.36" version="29.5.2" pages="5">
+  <diagram name="1. Architecture Overview" id="architecture">
+    <mxGraphModel dx="1665" dy="841" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" value="TCP Bridge - System Architecture" vertex="1">
+          <mxGeometry height="40" width="520" x="320" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="external1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1" value="External Service&#xa;(NATS Publisher)" vertex="1">
+          <mxGeometry height="80" width="160" x="80" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="nats1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1" value="NATS Server&#xa;(Queue Group)" vertex="1">
+          <mxGeometry height="80" width="160" x="320" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="bridge1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;fontStyle=1" value="TCP Bridge" vertex="1">
+          <mxGeometry height="420" width="280" x="560" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="connmgr1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" value="Connection Manager&#xa;(Priority-based Failover)&#xa;→ ConnectionManager&#xa;GetActiveConn(), Start()" vertex="1">
+          <mxGeometry height="70" width="240" x="580" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="natsclient1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11" value="NATS Client&#xa;(Subscriber/Publisher)&#xa;→ Subscriber, ReplyPublisher&#xa;Requester" vertex="1">
+          <mxGeometry height="70" width="240" x="580" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="handler1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" value="Message Handler&#xa;(NATS↔TCP Processing)&#xa;→ MessageHandler&#xa;HandleExternalRequest()" vertex="1">
+          <mxGeometry height="70" width="240" x="580" y="325" as="geometry" />
+        </mxCell>
+        <mxCell id="inflight1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11" value="Inflight Manager&#xa;(Request-Response Matching)&#xa;→ InflightManager&#xa;Register(), HandleResponse()" vertex="1">
+          <mxGeometry height="70" width="240" x="580" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="tcpserver1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;fontSize=14;fontStyle=1" value="TCP Server&#xa;(conn_0: Primary)" vertex="1">
+          <mxGeometry height="60" width="160" x="920" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="tcpserver2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=14" value="TCP Server&#xa;(conn_1: Secondary)" vertex="1">
+          <mxGeometry height="60" width="160" x="920" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="tcpserver3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14" value="TCP Server&#xa;(conn_2: Tertiary)" vertex="1">
+          <mxGeometry height="60" width="160" x="920" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow1" edge="1" parent="1" source="external1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#dae8fc;strokeColor=#6c8ebf;" target="nats1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label1" connectable="0" parent="arrow1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="Publish&#xa;(external_req)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow2" edge="1" parent="1" source="nats1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#fff2cc;strokeColor=#d6b656;" target="natsclient1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label2" connectable="0" parent="arrow2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="Subscribe&#xa;(Queue Group)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow3" edge="1" parent="1" source="connmgr1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=3;fillColor=#d5e8d4;strokeColor=#82b366;" target="tcpserver1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label3" connectable="0" parent="arrow3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1" value="Priority 0 (Active)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow4" edge="1" parent="1" source="connmgr1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#d5e8d4;strokeColor=#82b366;dashed=1;" target="tcpserver2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label4" connectable="0" parent="arrow4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="Priority 1 (Standby)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow5" edge="1" parent="1" source="connmgr1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#d5e8d4;strokeColor=#82b366;dashed=1;" target="tcpserver3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label5" connectable="0" parent="arrow5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="Priority 2 (Standby)" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;align=left;" value="Flow A: External → NATS → TCP Bridge → TCP Server" vertex="1">
+          <mxGeometry height="30" width="400" x="80" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="legend2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;" value="Flow B: TCP Server → TCP Bridge → NATS → External" vertex="1">
+          <mxGeometry height="30" width="400" x="80" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="feature1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;verticalAlign=top;" value="Key Features &amp; Components:&#xa;&#xa;✓ Priority-based Failover (conn_0 → conn_1 → conn_2)&#xa;  → PriorityConnSelector.SelectActive()&#xa;&#xa;✓ Queue Group Load Balancing&#xa;  → Subscriber.Subscribe() with Queue Group&#xa;&#xa;✓ Request-Response Matching (TID-based)&#xa;  → InflightA/B.Register(), HandleResponse()&#xa;&#xa;✓ Automatic Reconnection&#xa;  → ConnMgr.connectLoop() background goroutine" vertex="1">
+          <mxGeometry height="150" width="520" x="560" y="560" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="2. Call Flow A (NATS→TCP)" id="callflow-a">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <!-- Title -->
+        <mxCell id="title2" value="Call Flow A: NATS → TCP (External Request Processing)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="30" width="760" height="40" as="geometry" />
+        </mxCell>
+        <!-- Swimlanes -->
+        <mxCell id="lane1" value="External" style="swimlane;fontSize=14;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="100" width="200" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="lane2" value="NATS Server" style="swimlane;fontSize=14;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="280" y="100" width="200" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="lane3" value="TCP Bridge" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="100" width="200" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="lane4" value="TCP Server" style="swimlane;fontSize=14;fontStyle=1;fillColor=#fad7ac;strokeColor=#b46504;" vertex="1" parent="1">
+          <mxGeometry x="680" y="100" width="200" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="lane5" value="TCP Bridge" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="880" y="100" width="200" height="640" as="geometry" />
+        </mxCell>
+        <!-- Steps -->
+        <mxCell id="step1" value="1. Publish&#xa;external_req" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="lane1">
+          <mxGeometry x="20" y="60" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step2" value="2. Queue Group&#xa;Delivery" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="lane2">
+          <mxGeometry x="20" y="120" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step3" value="3. Subscribe&#xa;Callback&#xa;→ Subscriber.onMessage()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="lane3">
+          <mxGeometry x="20" y="180" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step4" value="4. Generate TID&#xa;→ generateTID()&#xa;atomic.AddUint32()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="lane3">
+          <mxGeometry x="20" y="245" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step5" value="5. Register&#xa;Inflight-A&#xa;→ InflightA.Register()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11;" vertex="1" parent="lane3">
+          <mxGeometry x="20" y="310" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step6" value="6. Send TCP&#xa;REQUEST Frame&#xa;→ Sender.SendFrame()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="lane3">
+          <mxGeometry x="20" y="375" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step7" value="7. Process&#xa;Request" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;" vertex="1" parent="lane4">
+          <mxGeometry x="20" y="420" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step8" value="8. Send TCP&#xa;RESPONSE Frame" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;" vertex="1" parent="lane4">
+          <mxGeometry x="20" y="480" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step9" value="9. Match TID&#xa;in Inflight-A&#xa;→ InflightA.HandleResponse()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11;" vertex="1" parent="lane5">
+          <mxGeometry x="20" y="540" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step10" value="10. Reply to&#xa;NATS inbox&#xa;→ ReplyPublisher.Publish()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="lane2">
+          <mxGeometry x="20" y="520" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step11" value="11. Receive&#xa;Response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="lane1">
+          <mxGeometry x="20" y="560" width="160" height="40" as="geometry" />
+        </mxCell>
+        <!-- Arrows -->
+        <mxCell id="arrow1a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="step1" target="step2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow2a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#d6b656;" edge="1" parent="1" source="step2" target="step3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow3a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="step3" target="step4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow4a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="step4" target="step5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow5a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="step5" target="step6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow6a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#b85450;" edge="1" parent="1" source="step6" target="step7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow7a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#b46504;" edge="1" parent="1" source="step7" target="step8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow8a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#b85450;" edge="1" parent="1" source="step8" target="step9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow9a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#d79b00;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="step9" target="step10">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="480" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow10a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="step10" target="step11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Notes -->
+        <mxCell id="note1" value="Frame Format (config.Frame):&#xa;Type(1) + Length(4) + TID(4) + Payload&#xa;→ frame.Serialize() / Deserialize()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="80" y="760" width="320" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="note2" value="Timeout: 30s (configurable)&#xa;Retry: msg.Nak() on TCP send failure&#xa;→ MessageHandler.HandleExternalRequest()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="440" y="760" width="320" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="note3" value="Manual ACK Pattern:&#xa;msg.Ack() on success, msg.Nak() triggers retry&#xa;→ Subscriber with Manual Ack mode" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="800" y="760" width="320" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="3. Call Flow B (TCP→NATS)" id="callflow-b">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <!-- Title -->
+        <mxCell id="title3" value="Call Flow B: TCP → NATS (TCP Inbound Processing)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="30" width="760" height="40" as="geometry" />
+        </mxCell>
+        <!-- Swimlanes -->
+        <mxCell id="lane1b" value="TCP Server" style="swimlane;fontSize=14;fontStyle=1;fillColor=#fad7ac;strokeColor=#b46504;" vertex="1" parent="1">
+          <mxGeometry x="80" y="100" width="180" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="lane2b" value="TCP Bridge&#xa;(Reader)" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="260" y="100" width="180" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="lane3b" value="TCP Bridge&#xa;(Handler)" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="440" y="100" width="180" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="lane4b" value="NATS Server" style="swimlane;fontSize=14;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="620" y="100" width="180" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="lane5b" value="External Service" style="swimlane;fontSize=14;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="800" y="100" width="180" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="lane6b" value="TCP Bridge&#xa;(Response)" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="980" y="100" width="180" height="600" as="geometry" />
+        </mxCell>
+        <!-- Steps -->
+        <mxCell id="step1b" value="1. Send TCP&#xa;REQUEST Frame" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;" vertex="1" parent="lane1b">
+          <mxGeometry x="20" y="60" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step2b" value="2. Read Frame&#xa;→ io.ReadFull()&#xa;Reader callback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="lane2b">
+          <mxGeometry x="20" y="120" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step3b" value="3. Dispatch&#xa;REQUEST&#xa;→ onRequestFrame()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="lane2b">
+          <mxGeometry x="20" y="185" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step4b" value="4. Register&#xa;Inflight-B&#xa;→ InflightB.Register()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11;" vertex="1" parent="lane3b">
+          <mxGeometry x="20" y="250" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step5b" value="5. Route to&#xa;NATS Subject&#xa;→ determineNATSSubject()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="lane3b">
+          <mxGeometry x="20" y="315" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step6b" value="6. NATS&#xa;Request()&#xa;→ Requester.Request()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="lane4b">
+          <mxGeometry x="20" y="380" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step7b" value="7. Process&#xa;&amp; Respond" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="lane5b">
+          <mxGeometry x="20" y="420" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step8b" value="8. NATS&#xa;Response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="lane4b">
+          <mxGeometry x="20" y="480" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step9b" value="9. Build TCP&#xa;RESPONSE Frame&#xa;→ Frame.Serialize()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="lane6b">
+          <mxGeometry x="20" y="520" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step10b" value="10. Send to&#xa;TCP Server&#xa;→ Sender.SendFrame()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=11;" vertex="1" parent="lane1b">
+          <mxGeometry x="20" y="520" width="140" height="50" as="geometry" />
+        </mxCell>
+        <!-- Arrows -->
+        <mxCell id="arrow1b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#b46504;" edge="1" parent="1" source="step1b" target="step2b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow2b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="step2b" target="step3b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow3b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#9673a6;" edge="1" parent="1" source="step3b" target="step4b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow4b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="step4b" target="step5b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow5b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#d79b00;" edge="1" parent="1" source="step5b" target="step6b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow6b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#d6b656;" edge="1" parent="1" source="step6b" target="step7b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow7b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="step7b" target="step8b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow8b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#d6b656;" edge="1" parent="1" source="step8b" target="step9b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow9b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#ae4132;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="step9b" target="step10b">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="680" />
+              <mxPoint x="260" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <!-- Notes -->
+        <mxCell id="note1b" value="Routing Rules (config.RoutingRules):&#xa;Payload field → NATS subject mapping&#xa;→ determineNATSSubject(), GetSubject()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="80" y="720" width="440" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="note2b" value="Inflight-B (inflight.InflightEntryB):&#xa;Tracks TCP→NATS pending requests with TID&#xa;→ InflightB.Register(), Remove()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="560" y="720" width="440" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="4. Data Structures" id="data-structures">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <!-- Title -->
+        <mxCell id="title4" value="TCP Bridge - Data Structures" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="320" y="30" width="520" height="40" as="geometry" />
+        </mxCell>
+        <!-- Frame Structure -->
+        <mxCell id="frame1" value="TCP Frame Structure (config.Frame)" style="swimlane;fontSize=16;fontStyle=1;fillColor=#f8cecc;strokeColor=#b85450;startSize=40;" vertex="1" parent="1">
+          <mxGeometry x="80" y="100" width="480" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="framefield1" value="Type (1 byte) - frame.Type uint8" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;align=left;" vertex="1" parent="frame1">
+          <mxGeometry x="20" y="60" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="framefield2" value="Length (4 bytes, BigEndian) - frame.Length uint32" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;align=left;" vertex="1" parent="frame1">
+          <mxGeometry x="20" y="95" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="framefield3" value="TID - Transaction ID (4 bytes, BigEndian) - frame.TID uint32" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;align=left;" vertex="1" parent="frame1">
+          <mxGeometry x="20" y="130" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="framefield4" value="Payload (variable length) - frame.Payload []byte" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;" vertex="1" parent="frame1">
+          <mxGeometry x="20" y="165" width="440" height="30" as="geometry" />
+        </mxCell>
+        <!-- Frame Types -->
+        <mxCell id="types1" value="Frame Types (config package constants)" style="swimlane;fontSize=14;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;startSize=40;" vertex="1" parent="1">
+          <mxGeometry x="600" y="100" width="480" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="type1" value="0x01 - FrameTypeRequest - TCP inbound RPC request" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;" vertex="1" parent="types1">
+          <mxGeometry x="20" y="60" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="type2" value="0x02 - FrameTypeResponse - TCP RPC response" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="types1">
+          <mxGeometry x="20" y="95" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="type3" value="0x10 - FrameTypeHello - Connection handshake" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="types1">
+          <mxGeometry x="20" y="130" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="type4" value="0x11 - FrameTypeAck - Handshake acknowledgment" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="types1">
+          <mxGeometry x="20" y="165" width="440" height="30" as="geometry" />
+        </mxCell>
+        <!-- Inflight Entry A -->
+        <mxCell id="infla1" value="Inflight-A Entry (NATS→TCP) - inflight.InflightEntryA" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d0cee2;strokeColor=#56517e;startSize=40;" vertex="1" parent="1">
+          <mxGeometry x="80" y="340" width="480" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="inflafield1" value="TID: uint32 - Transaction ID" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="infla1">
+          <mxGeometry x="20" y="60" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflafield2" value="ReplySubject: string - NATS inbox for response" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="infla1">
+          <mxGeometry x="20" y="90" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflafield3" value="Payload: []byte - Original request data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="infla1">
+          <mxGeometry x="20" y="120" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflafield4" value="Attempt: int - Retry attempt counter" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="infla1">
+          <mxGeometry x="20" y="150" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflafield5" value="Deadline: int64 - Request timeout (unix timestamp)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="infla1">
+          <mxGeometry x="20" y="180" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflafield6" value="ResponseChan: chan *Frame - Response delivery channel" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;align=left;" vertex="1" parent="infla1">
+          <mxGeometry x="20" y="210" width="440" height="25" as="geometry" />
+        </mxCell>
+        <!-- Inflight Entry B -->
+        <mxCell id="inflb1" value="Inflight-B Entry (TCP→NATS) - inflight.InflightEntryB" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d0cee2;strokeColor=#56517e;startSize=40;" vertex="1" parent="1">
+          <mxGeometry x="600" y="340" width="480" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="inflbfield1" value="TID: uint32 - Transaction ID" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="inflb1">
+          <mxGeometry x="20" y="60" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflbfield2" value="TCPReplyInfo: *TCPReplyInfo - Connection metadata (ConnectionID, FrameType)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;" vertex="1" parent="inflb1">
+          <mxGeometry x="20" y="90" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflbfield3" value="Payload: []byte - Original request data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="inflb1">
+          <mxGeometry x="20" y="120" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflbfield4" value="Deadline: int64 - Request timeout (unix timestamp)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="inflb1">
+          <mxGeometry x="20" y="150" width="440" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="inflbfield5" value="ResponseChan: chan []byte - NATS response delivery" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;" vertex="1" parent="inflb1">
+          <mxGeometry x="20" y="180" width="440" height="25" as="geometry" />
+        </mxCell>
+        <!-- Config Structure -->
+        <mxCell id="config1" value="Configuration (config.yaml)" style="swimlane;fontSize=16;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;startSize=40;" vertex="1" parent="1">
+          <mxGeometry x="80" y="640" width="1000" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="configfield1" value="tcp.endpoints: []TCPEndpoint - Priority-based endpoint list (priority: 0, 1, 2...)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="config1">
+          <mxGeometry x="20" y="60" width="960" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="configfield2" value="nats.external_req_subject: string - Queue Group subscription subject for external requests" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="config1">
+          <mxGeometry x="20" y="90" width="960" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="configfield3" value="nats.routing_rules: RoutingRules - Payload field mapping to NATS subjects" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="config1">
+          <mxGeometry x="20" y="120" width="960" height="25" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="5. Failover Sequence" id="failover">
+    <mxGraphModel dx="1665" dy="841" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title5" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" value="Priority-based Failover Sequence" vertex="1">
+          <mxGeometry height="40" width="520" x="320" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="state1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;fontStyle=1;align=center;" value="State 1: Normal Operation (conn_0 READY)" vertex="1">
+          <mxGeometry height="40" width="1000" x="80" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="conn0a" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="conn_0&#xa;(Priority: 0)&#xa;READY ✓" vertex="1">
+          <mxGeometry height="80" width="160" x="120" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="conn1a" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" value="conn_1&#xa;(Priority: 1)&#xa;READY" vertex="1">
+          <mxGeometry height="80" width="160" x="320" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="conn2a" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" value="conn_2&#xa;(Priority: 2)&#xa;READY" vertex="1">
+          <mxGeometry height="80" width="160" x="520" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="active1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#009900" value="Active Connection" vertex="1">
+          <mxGeometry height="30" width="160" x="120" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="state2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=16;fontStyle=1;align=center;" value="State 2: Failover to conn_1 (conn_0 FAILED)" vertex="1">
+          <mxGeometry height="40" width="1000" x="80" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="conn0b" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1" value="conn_0&#xa;(Priority: 0)&#xa;FAILED ✗" vertex="1">
+          <mxGeometry height="80" width="160" x="120" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="conn1b" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="conn_1&#xa;(Priority: 1)&#xa;READY ✓" vertex="1">
+          <mxGeometry height="80" width="160" x="320" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="conn2b" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" value="conn_2&#xa;(Priority: 2)&#xa;READY" vertex="1">
+          <mxGeometry height="80" width="160" x="520" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="active2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#009900" value="Active Connection" vertex="1">
+          <mxGeometry height="30" width="160" x="320" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="reconnect1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2;fontColor=#cc0000" value="conn_0 reconnecting..." vertex="1">
+          <mxGeometry height="30" width="160" x="120" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="state3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;fontStyle=1;align=center;" value="State 3: Recovery (conn_0 back to READY)" vertex="1">
+          <mxGeometry height="40" width="1000" x="80" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="conn0c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="conn_0&#xa;(Priority: 0)&#xa;READY ✓" vertex="1">
+          <mxGeometry height="80" width="160" x="120" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="conn1c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" value="conn_1&#xa;(Priority: 1)&#xa;READY" vertex="1">
+          <mxGeometry height="80" width="160" x="320" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="conn2c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" value="conn_2&#xa;(Priority: 2)&#xa;READY" vertex="1">
+          <mxGeometry height="80" width="160" x="520" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="active3" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#009900" value="Active Connection&#xa;(Switched back to conn_0)" vertex="1">
+          <mxGeometry height="40" width="160" x="120" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="note5-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;verticalAlign=top;" value="Failover Logic (connection.ConnectionManager):&#xa;&#xa;• GetActiveConn() always returns highest priority READY connection&#xa;&#xa;• ConnMgr.connectLoop() continuously attempts reconnection&#xa;  in background goroutine&#xa;&#xa;• State transitions (ConnMgr.setState()):&#xa;  - CONNECTING → READY (on successful handshake)&#xa;  - CONNECTING → FAILED (on connection error)&#xa;  - READY → FAILED (on read/write error)&#xa;&#xa;• PriorityConnSelector.SelectActive() performs&#xa;  automatic recovery when higher priority becomes available&#xa;&#xa;• Each ConnMgr runs independent readLoop() for&#xa;  frame reception and state monitoring" vertex="1">
+          <mxGeometry height="610" width="380" x="800" y="109" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

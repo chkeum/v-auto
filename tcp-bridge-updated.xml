@@ -1,0 +1,528 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.5.2 Chrome/142.0.7444.265 Electron/39.6.1 Safari/537.36" version="29.5.2" pages="6">
+  <diagram name="1. Architecture Overview" id="architecture">
+    <mxGraphModel dx="1665" dy="841" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" value="TCP Bridge - System Architecture (Updated)" vertex="1">
+          <mxGeometry height="40" width="600" x="285" y="20" as="geometry" />
+        </mxCell>
+        
+        <!-- External Services -->
+        <mxCell id="external1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1" value="External Service&#xa;(NATS Publisher)" vertex="1">
+          <mxGeometry height="80" width="160" x="60" y="200" as="geometry" />
+        </mxCell>
+        
+        <!-- NATS Server -->
+        <mxCell id="nats1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1" value="NATS Server&#xa;(Queue Group)" vertex="1">
+          <mxGeometry height="80" width="160" x="280" y="200" as="geometry" />
+        </mxCell>
+        
+        <!-- TCP Bridge -->
+        <mxCell id="bridge1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;fontStyle=1" value="TCP Bridge" vertex="1">
+          <mxGeometry height="480" width="300" x="500" y="100" as="geometry" />
+        </mxCell>
+        
+        <!-- TCP Bridge Components -->
+        <mxCell id="connmgr1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10" value="Connection Manager&#xa;(Multi-endpoint, Priority Failover)&#xa;→ WriteToConnection(connID)&#xa;→ GetActive() for NATS→TCP" vertex="1">
+          <mxGeometry height="75" width="260" x="520" y="130" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="natsclient1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10" value="NATS Client&#xa;→ Subscriber (Queue Group)&#xa;→ Requester (TCP→NATS)&#xa;→ ReplyPublisher" vertex="1">
+          <mxGeometry height="75" width="260" x="520" y="220" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="handler1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10" value="Message Handler&#xa;→ HandleExternalRequest (NATS→TCP)&#xa;→ HandleTCPRequest (TCP→NATS)&#xa;→ sendTCPResponseToConnection()" vertex="1">
+          <mxGeometry height="75" width="260" x="520" y="310" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="inflight1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=10" value="Inflight Manager&#xa;→ Inflight-A (TID only)&#xa;→ Inflight-B (connID:TID key)&#xa;Register(), HandleResponse()" vertex="1">
+          <mxGeometry height="75" width="260" x="520" y="400" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="pingpong1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#996185;fontSize=10" value="Ping-Pong Keep-Alive&#xa;→ Idle-based (10s idle → PING)&#xa;→ State: DISCONNECTED, CONNECTING,&#xa;   CONNECT_FAILED, READY" vertex="1">
+          <mxGeometry height="75" width="260" x="520" y="490" as="geometry" />
+        </mxCell>
+        
+        <!-- TCP Servers (Multiple) -->
+        <mxCell id="tcp0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5f5d5;strokeColor=#82b366;fontSize=13;fontStyle=1" value="TCP Server 0&#xa;(conn_0: Priority 0)&#xa;127.0.0.1:8000" vertex="1">
+          <mxGeometry height="70" width="160" x="870" y="140" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="tcp1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=13" value="TCP Server 1&#xa;(conn_1: Priority 1)&#xa;192.168.1.101:8000" vertex="1">
+          <mxGeometry height="70" width="160" x="870" y="240" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="tcp2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13" value="TCP Server 2&#xa;(conn_2: Priority 2)&#xa;192.168.1.102:8000" vertex="1">
+          <mxGeometry height="70" width="160" x="870" y="340" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows -->
+        <mxCell id="arrow1" edge="1" parent="1" source="external1" target="nats1" style="strokeWidth=2;strokeColor=#6c8ebf;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label1" connectable="0" parent="arrow1" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=10;" value="Publish&#xa;external_req" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow2" edge="1" parent="1" source="nats1" target="natsclient1" style="strokeWidth=2;strokeColor=#d6b656;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Connection arrows to TCP servers -->
+        <mxCell id="arrow_tcp0" edge="1" parent="1" source="connmgr1" target="tcp0" style="strokeWidth=3;strokeColor=#82b366;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label_tcp0" connectable="0" parent="arrow_tcp0" style="edgeLabel;html=1;align=center;fontSize=11;fontStyle=1" value="Active&#xa;(NATS→TCP)" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint x="5" y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow_tcp1" edge="1" parent="1" source="connmgr1" target="tcp1" style="strokeWidth=2;strokeColor=#ae4132;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label_tcp1" connectable="0" parent="arrow_tcp1" style="edgeLabel;html=1;align=center;fontSize=10;" value="Standby +&#xa;TCP→NATS" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow_tcp2" edge="1" parent="1" source="connmgr1" target="tcp2" style="strokeWidth=2;strokeColor=#666666;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="label_tcp2" connectable="0" parent="arrow_tcp2" style="edgeLabel;html=1;align=center;fontSize=10;" value="Standby +&#xa;TCP→NATS" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint x="5" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5f5d5;strokeColor=#82b366;fontSize=11;align=left;" value="✓ NATS→TCP: Active connection only (priority-based failover)" vertex="1">
+          <mxGeometry height="25" width="450" x="60" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="legend2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" value="✓ TCP→NATS: All connections independently (connectionID:TID tracking)" vertex="1">
+          <mxGeometry height="25" width="450" x="60" y="665" as="geometry" />
+        </mxCell>
+        
+        <!-- Features -->
+        <mxCell id="features" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=left;verticalAlign=top;" value="Key Features (Updated):&#xa;&#xa;✓ Multi-Endpoint with Independent TID Space&#xa;  → Frame.ConnectionID (metadata, not serialized)&#xa;  → InflightB uses &quot;connID:TID&quot; key&#xa;&#xa;✓ Response to Originating Connection&#xa;  → SendFrameToConnection(connectionID, frame)&#xa;&#xa;✓ Ping-Pong Keep-Alive (Idle-based, 10s)&#xa;  → Only data frames update activity time&#xa;&#xa;✓ Connection States&#xa;  → DISCONNECTED, CONNECTING, CONNECT_FAILED, READY&#xa;&#xa;✓ Message Type Routing&#xa;  → 0x05 → tcp.subs.change, etc." vertex="1">
+          <mxGeometry height="180" width="520" x="560" y="630" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <diagram name="2. NATS→TCP Flow" id="flow-nats-tcp">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title2" value="NATS → TCP Flow (Uses Active Connection Only)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="150" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step1" value="1. NATS Publish&#xa;(external_req)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="100" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step2" value="2. Queue Group&#xa;Delivery" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="180" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step3" value="3. Generate TID&#xa;(atomic.AddUint32)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="260" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step4" value="4. Register&#xa;Inflight-A (TID)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="340" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step5" value="5. Send to&#xa;Active Connection&#xa;(Priority 0)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5f5d5;strokeColor=#82b366;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="420" width="150" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step6" value="6. TCP Response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="300" y="420" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step7" value="7. Match TID in&#xa;Inflight-A" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="300" y="340" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step8" value="8. Reply to NATS&#xa;(msg.Reply)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="300" y="260" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows -->
+        <mxCell id="a1" edge="1" parent="1" source="step1" target="step2" style="strokeWidth=2;strokeColor=#6c8ebf;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" edge="1" parent="1" source="step2" target="step3" style="strokeWidth=2;strokeColor=#d6b656;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" edge="1" parent="1" source="step3" target="step4" style="strokeWidth=2;strokeColor=#9673a6;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" edge="1" parent="1" source="step4" target="step5" style="strokeWidth=2;strokeColor=#56517e;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" edge="1" parent="1" source="step5" target="step6" style="strokeWidth=3;strokeColor=#82b366;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a6" edge="1" parent="1" source="step6" target="step7" style="strokeWidth=2;strokeColor=#b46504;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a7" edge="1" parent="1" source="step7" target="step8" style="strokeWidth=2;strokeColor=#56517e;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Connection Priority Note -->
+        <mxCell id="note_priority" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;verticalAlign=top;" value="Connection Selection Logic:&#xa;&#xa;→ GetActive() returns lowest priority READY connection&#xa;  Priority 0 (READY) → Use conn_0&#xa;  Priority 0 (FAILED) → Use conn_1&#xa;  Priority 0,1 (FAILED) → Use conn_2&#xa;&#xa;→ Automatic failover on connection failure&#xa;→ Automatic recovery when higher priority returns" vertex="1">
+          <mxGeometry height="150" width="380" x="520" y="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Inflight-A Structure -->
+        <mxCell id="note_inflight_a" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11;align=left;verticalAlign=top;" value="Inflight-A Structure:&#xa;&#xa;Key: TID only (uint32)&#xa;&#xa;Value:&#xa;  - ReplySubject (NATS inbox)&#xa;  - Payload (original request)&#xa;  - Deadline (timeout)&#xa;  - ResponseChan (TCP response delivery)" vertex="1">
+          <mxGeometry height="140" width="380" x="520" y="270" as="geometry" />
+        </mxCell>
+        
+        <!-- Timeout Note -->
+        <mxCell id="note_timeout" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;verticalAlign=top;" value="Timeout &amp; Retry:&#xa;&#xa;→ Request timeout: 30s (configurable)&#xa;→ On TCP send failure: msg.Nak()&#xa;→ NATS redelivers to another queue member&#xa;→ On timeout: Error response to NATS" vertex="1">
+          <mxGeometry height="110" width="380" x="520" y="430" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <diagram name="3. TCP→NATS Flow" id="flow-tcp-nats">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title3" value="TCP → NATS Flow (All Connections Independent)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="150" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Three parallel flows -->
+        <mxCell id="conn0_box" parent="1" style="swimlane;fontSize=13;fontStyle=1;fillColor=#d5f5d5;strokeColor=#82b366;startSize=30;" value="Connection 0 (conn_0)" vertex="1">
+          <mxGeometry x="80" y="90" width="200" height="500" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c0_step1" value="1. TCP REQUEST&#xa;(Type=0x05, TID=100)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;fontSize=11" vertex="1" parent="conn0_box">
+          <mxGeometry x="20" y="50" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c0_step2" value="2. Set&#xa;frame.ConnectionID&#xa;= &quot;conn_0&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" vertex="1" parent="conn0_box">
+          <mxGeometry x="20" y="120" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c0_step3" value="3. Register&#xa;Inflight-B&#xa;key=&quot;conn_0:100&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11" vertex="1" parent="conn0_box">
+          <mxGeometry x="20" y="200" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c0_step4" value="4. NATS Request&#xa;(tcp.subs.change)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="conn0_box">
+          <mxGeometry x="20" y="280" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c0_step5" value="5. Response to&#xa;conn_0 ONLY" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5f5d5;strokeColor=#82b366;fontSize=11;fontStyle=1" vertex="1" parent="conn0_box">
+          <mxGeometry x="20" y="350" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c0_step6" value="6. SendFrameTo&#xa;Connection&#xa;(&quot;conn_0&quot;, ...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5f5d5;strokeColor=#82b366;fontSize=11;fontStyle=1" vertex="1" parent="conn0_box">
+          <mxGeometry x="20" y="420" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="conn1_box" parent="1" style="swimlane;fontSize=13;fontStyle=1;fillColor=#fad9d5;strokeColor=#ae4132;startSize=30;" value="Connection 1 (conn_1)" vertex="1">
+          <mxGeometry x="320" y="90" width="200" height="500" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c1_step1" value="1. TCP REQUEST&#xa;(Type=0x05, TID=100)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;fontSize=11" vertex="1" parent="conn1_box">
+          <mxGeometry x="20" y="50" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c1_step2" value="2. Set&#xa;frame.ConnectionID&#xa;= &quot;conn_1&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" vertex="1" parent="conn1_box">
+          <mxGeometry x="20" y="120" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c1_step3" value="3. Register&#xa;Inflight-B&#xa;key=&quot;conn_1:100&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11" vertex="1" parent="conn1_box">
+          <mxGeometry x="20" y="200" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c1_step4" value="4. NATS Request&#xa;(tcp.subs.change)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="conn1_box">
+          <mxGeometry x="20" y="280" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c1_step5" value="5. Response to&#xa;conn_1 ONLY" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=11;fontStyle=1" vertex="1" parent="conn1_box">
+          <mxGeometry x="20" y="350" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c1_step6" value="6. SendFrameTo&#xa;Connection&#xa;(&quot;conn_1&quot;, ...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=11;fontStyle=1" vertex="1" parent="conn1_box">
+          <mxGeometry x="20" y="420" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="conn2_box" parent="1" style="swimlane;fontSize=13;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;startSize=30;" value="Connection 2 (conn_2)" vertex="1">
+          <mxGeometry x="560" y="90" width="200" height="500" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c2_step1" value="1. TCP REQUEST&#xa;(Type=0x05, TID=100)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;fontSize=11" vertex="1" parent="conn2_box">
+          <mxGeometry x="20" y="50" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c2_step2" value="2. Set&#xa;frame.ConnectionID&#xa;= &quot;conn_2&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" vertex="1" parent="conn2_box">
+          <mxGeometry x="20" y="120" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c2_step3" value="3. Register&#xa;Inflight-B&#xa;key=&quot;conn_2:100&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=11" vertex="1" parent="conn2_box">
+          <mxGeometry x="20" y="200" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c2_step4" value="4. NATS Request&#xa;(tcp.subs.change)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" vertex="1" parent="conn2_box">
+          <mxGeometry x="20" y="280" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c2_step5" value="5. Response to&#xa;conn_2 ONLY" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1" vertex="1" parent="conn2_box">
+          <mxGeometry x="20" y="350" width="160" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="c2_step6" value="6. SendFrameTo&#xa;Connection&#xa;(&quot;conn_2&quot;, ...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1" vertex="1" parent="conn2_box">
+          <mxGeometry x="20" y="420" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Key Point -->
+        <mxCell id="keypoint" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;fontStyle=1" value="KEY POINT:&#xa;&#xa;→ Same TID (100) but different ConnectionID&#xa;→ Inflight-B keys: &quot;conn_0:100&quot;, &quot;conn_1:100&quot;, &quot;conn_2:100&quot;&#xa;→ No TID collision! Each connection has independent TID space&#xa;→ Response sent back to ORIGINATING connection only" vertex="1">
+          <mxGeometry height="140" width="680" x="80" y="620" as="geometry" />
+        </mxCell>
+        
+        <!-- Protocol Note -->
+        <mxCell id="protocol_note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;verticalAlign=top;" value="Protocol Unchanged:&#xa;&#xa;→ ConnectionID is METADATA only (not serialized)&#xa;→ Wire format: 8-byte header + payload (same as before)&#xa;→ External systems see no difference" vertex="1">
+          <mxGeometry height="90" width="300" x="800" y="90" as="geometry" />
+        </mxCell>
+        
+        <!-- Routing Note -->
+        <mxCell id="routing_note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;verticalAlign=top;" value="Message Type Routing:&#xa;&#xa;0x05 → tcp.subs.change&#xa;0x07 → tcp.subs.info&#xa;0x09 → tcp.cellinfo.noti&#xa;0x0b → tcp.subs.sync" vertex="1">
+          <mxGeometry height="110" width="300" x="800" y="200" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <diagram name="4. Connection States" id="states">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title_state" value="Connection State Machine" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="350" y="30" width="460" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- States as circles -->
+        <mxCell id="state_disconn" value="DISCONNECTED" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="150" width="150" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="state_connecting" value="CONNECTING" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="500" y="150" width="150" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="state_failed" value="CONNECT_FAILED" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="500" y="350" width="150" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="state_ready" value="READY" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="800" y="250" width="150" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Transitions -->
+        <mxCell id="trans1" edge="1" parent="1" source="state_disconn" target="state_connecting" style="strokeWidth=2;strokeColor=#666666;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans1_label" connectable="0" parent="trans1" style="edgeLabel;html=1;align=center;fontSize=11;" value="Reconnect Timer" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="trans2" edge="1" parent="1" source="state_connecting" target="state_ready" style="strokeWidth=2;strokeColor=#82b366;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans2_label" connectable="0" parent="trans2" style="edgeLabel;html=1;align=center;fontSize=11;fontColor=#009900;fontStyle=1" value="Handshake Success" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="trans3" edge="1" parent="1" source="state_connecting" target="state_failed" style="strokeWidth=2;strokeColor=#ae4132;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans3_label" connectable="0" parent="trans3" style="edgeLabel;html=1;align=center;fontSize=11;fontColor=#cc0000" value="Connection Failed" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint x="15" y="5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="trans4" edge="1" parent="1" source="state_failed" target="state_connecting" style="strokeWidth=2;strokeColor=#666666;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans4_label" connectable="0" parent="trans4" style="edgeLabel;html=1;align=center;fontSize=11;" value="Retry (5s)" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint x="-15" y="5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="trans5" edge="1" parent="1" source="state_ready" target="state_disconn" style="strokeWidth=2;strokeColor=#b85450;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="875" y="120" />
+              <mxPoint x="275" y="120" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="trans5_label" connectable="0" parent="trans5" style="edgeLabel;html=1;align=center;fontSize=11;fontColor=#cc0000" value="Read/Write Error or&#xa;Ping Timeout" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint y="-15" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Ping-Pong Note -->
+        <mxCell id="pingpong_note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#996185;fontSize=12;align=left;verticalAlign=top;" value="Ping-Pong Keep-Alive (READY State Only):&#xa;&#xa;→ Monitor idle time (last data frame activity)&#xa;→ If idle &gt; 10s: Send PING&#xa;→ Wait for PONG (timeout: 5s)&#xa;→ No PONG received: Move to DISCONNECTED&#xa;→ PING/PONG do NOT update activity time&#xa;→ Only data frames update lastActivityTime" vertex="1">
+          <mxGeometry height="150" width="380" x="200" y="520" as="geometry" />
+        </mxCell>
+        
+        <!-- State Description -->
+        <mxCell id="state_desc" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;verticalAlign=top;" value="State Descriptions:&#xa;&#xa;DISCONNECTED: Initial state or connection lost&#xa;&#xa;CONNECTING: TCP dial in progress or handshake ongoing&#xa;&#xa;CONNECT_FAILED: Connection attempt failed (retry after 5s)&#xa;&#xa;READY: Connected, handshake completed, can send/receive data" vertex="1">
+          <mxGeometry height="150" width="380" x="620" y="520" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <diagram name="5. Frame Structure" id="frame-structure">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title_frame" value="TCP Frame Structure (8-byte Header + Payload)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="30" width="770" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Frame Header Bytes -->
+        <mxCell id="byte0" value="Byte 0&#xa;Ext+Ver+Rsvd&#xa;0x00" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="120" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="byte1" value="Byte 1&#xa;Message Type&#xa;0x01-0x0c" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="220" y="120" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="byte23" value="Byte 2-3&#xa;Body Length&#xa;(uint16 BE)&#xa;Max 65535" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="340" y="120" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="byte47" value="Byte 4-7&#xa;Transaction ID&#xa;(uint32 BE)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="480" y="120" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="byte8plus" value="Byte 8+&#xa;Payload (JSON)&#xa;Variable Length" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="640" y="120" width="320" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Message Types -->
+        <mxCell id="msg_types" parent="1" style="swimlane;fontSize=14;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;startSize=35;" value="Message Types" vertex="1">
+          <mxGeometry x="100" y="240" width="860" height="260" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="type_hello" value="0x01 - HELLO Request (Handshake)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;align=left;" vertex="1" parent="msg_types">
+          <mxGeometry x="20" y="50" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="type_ack" value="0x02 - HELLO Response (ACK)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;" vertex="1" parent="msg_types">
+          <mxGeometry x="20" y="90" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="type_ping" value="0x03 - PING Request (Keep-alive)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#996185;fontSize=12;align=left;" vertex="1" parent="msg_types">
+          <mxGeometry x="20" y="130" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="type_pong" value="0x04 - PING Response (PONG)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#996185;fontSize=12;align=left;" vertex="1" parent="msg_types">
+          <mxGeometry x="20" y="170" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="type_business" value="0x05-0x0c - Business Messages&#xa;  (Requests: odd, Responses: even)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=left;" vertex="1" parent="msg_types">
+          <mxGeometry x="20" y="210" width="400" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="routing_examples" value="Routing Examples:&#xa;  0x05 → tcp.subs.change&#xa;  0x07 → tcp.subs.info&#xa;  0x09 → tcp.cellinfo.noti&#xa;  0x0b → tcp.subs.sync" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="msg_types">
+          <mxGeometry x="440" y="50" width="400" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="response_map" value="Response Type = Request Type + 1:&#xa;  0x05 Request → 0x06 Response&#xa;  0x07 Request → 0x08 Response&#xa;  etc." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="msg_types">
+          <mxGeometry x="440" y="160" width="400" height="90" as="geometry" />
+        </mxCell>
+        
+        <!-- Frame Metadata -->
+        <mxCell id="metadata_note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;align=left;verticalAlign=top;" value="Frame Metadata (Runtime Only, NOT Serialized):&#xa;&#xa;→ ConnectionID: string (e.g., &quot;conn_0&quot;, &quot;conn_1&quot;, &quot;conn_2&quot;)&#xa;→ Set in readLoop when frame is received&#xa;→ Used to send response back to originating connection&#xa;→ NOT included in wire protocol (8 bytes header only)&#xa;&#xa;Go Structure:&#xa;  type Frame struct {&#xa;    Type    uint8    // Byte 1&#xa;    TID     uint32   // Byte 4-7&#xa;    Payload []byte   // Byte 8+&#xa;    ConnectionID string // METADATA ONLY&#xa;  }" vertex="1">
+          <mxGeometry height="220" width="860" x="100" y="530" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <diagram name="6. Inflight Management" id="inflight">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title_inflight" value="Inflight Management (Request-Response Matching)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="20" width="770" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Inflight-A -->
+        <mxCell id="inflight_a_box" parent="1" style="swimlane;fontSize=15;fontStyle=1;fillColor=#d0cee2;strokeColor=#56517e;startSize=40;" value="Inflight-A (NATS→TCP)" vertex="1">
+          <mxGeometry x="100" y="100" width="450" height="300" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="ia_key" value="Key: TID (uint32)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;align=left;" vertex="1" parent="inflight_a_box">
+          <mxGeometry x="20" y="60" width="410" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="ia_fields" value="Value Fields:&#xa;  • ReplySubject: string (NATS inbox)&#xa;  • Payload: []byte (original request)&#xa;  • Attempt: int (retry counter)&#xa;  • Deadline: int64 (unix timestamp)&#xa;  • Phase: string (&quot;P&quot; or &quot;S&quot;)&#xa;  • ResponseChan: chan *Frame&#xa;  • TimeoutChan: chan struct{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="inflight_a_box">
+          <mxGeometry x="20" y="100" width="410" height="140" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="ia_usage" value="Usage:&#xa;  Register(tid, replySubject, ...)&#xa;  HandleResponse(frame) → match by frame.TID" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="inflight_a_box">
+          <mxGeometry x="20" y="250" width="410" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Inflight-B -->
+        <mxCell id="inflight_b_box" parent="1" style="swimlane;fontSize=15;fontStyle=1;fillColor=#d0cee2;strokeColor=#56517e;startSize=40;" value="Inflight-B (TCP→NATS)" vertex="1">
+          <mxGeometry x="600" y="100" width="500" height="300" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="ib_key" value="Key: &quot;connectionID:TID&quot; (string)&#xa;  Examples: &quot;conn_0:123&quot;, &quot;conn_1:123&quot;, &quot;conn_2:123&quot;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;align=left;" vertex="1" parent="inflight_b_box">
+          <mxGeometry x="20" y="60" width="460" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="ib_fields" value="Value Fields:&#xa;  • TID: uint32&#xa;  • TCPReplyInfo: *TCPReplyInfo&#xa;    - ConnectionID: string&#xa;    - FrameType: uint8&#xa;  • Payload: []byte (original request)&#xa;  • Deadline: int64 (unix timestamp)&#xa;  • ResponseChan: chan []byte&#xa;  • TimeoutChan: chan struct{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;" vertex="1" parent="inflight_b_box">
+          <mxGeometry x="20" y="120" width="460" height="130" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="ib_usage" value="Usage:&#xa;  Register(tid, tcpReplyInfo, ...)  // key = connID:TID&#xa;  Remove(connectionID, tid)&#xa;  HandleResponse(connectionID, tid, response)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="inflight_b_box">
+          <mxGeometry x="20" y="260" width="460" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Comparison -->
+        <mxCell id="comparison" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;verticalAlign=top;fontStyle=1" value="KEY DIFFERENCE:&#xa;&#xa;Inflight-A:&#xa;  → Simple TID-based matching&#xa;  → NATS→TCP uses single active connection&#xa;  → No connection ambiguity&#xa;&#xa;Inflight-B:&#xa;  → Compound key: connectionID + TID&#xa;  → TCP→NATS from multiple connections simultaneously&#xa;  → Same TID from different connections must be isolated&#xa;  → Response sent back to ORIGINATING connection" vertex="1">
+          <mxGeometry height="210" width="1000" x="100" y="450" as="geometry" />
+        </mxCell>
+        
+        <!-- Example -->
+        <mxCell id="example" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;align=left;verticalAlign=top;" value="Example Scenario:&#xa;&#xa;TCP Server 0 sends REQUEST (TID=100) → Inflight-B[&quot;conn_0:100&quot;]&#xa;TCP Server 1 sends REQUEST (TID=100) → Inflight-B[&quot;conn_1:100&quot;]&#xa;TCP Server 2 sends REQUEST (TID=100) → Inflight-B[&quot;conn_2:100&quot;]&#xa;&#xa;All three are independent! No TID collision.&#xa;&#xa;NATS Response → Match connectionID → Send back to correct server only." vertex="1">
+          <mxGeometry height="150" width="1000" x="100" y="680" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

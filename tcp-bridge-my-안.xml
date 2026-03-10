@@ -1,0 +1,154 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.5.2 Chrome/142.0.7444.265 Electron/39.6.1 Safari/537.36" version="29.5.2">
+  <diagram id="tcp-if-goroutine-bothreq" name="tcp-if (TCP req + resp, inflight A/B)">
+    <mxGraphModel dx="1665" dy="1741" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ext" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffffff;" value="External TCP Server&#xa;DEDUP by tid ✅&#xa;Sends: TCP request frames + response frames" vertex="1">
+          <mxGeometry height="160" width="260" x="1210" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="nats" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffffff;" value="NATS Cluster&#xa;(internal)" vertex="1">
+          <mxGeometry height="130" width="220" x="30" y="-695" as="geometry" />
+        </mxCell>
+        <mxCell id="pod" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=3;fillColor=#f5f7ff;" value="tcp-if (Pod) - recommended goroutine model" vertex="1">
+          <mxGeometry height="1490" width="880" x="300" y="-710" as="geometry" />
+        </mxCell>
+        <mxCell id="eth0" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;" value="eth0 (to NATS / internal)" vertex="1">
+          <mxGeometry height="20" width="260" x="300" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="net0" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;" value="net0 (to external TCP)" vertex="1">
+          <mxGeometry height="20" width="260" x="1160" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="sendq" parent="1" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;strokeWidth=2;fillColor=#ffffff;" value="sendQ (bounded)&#xa;SendJob{tid, frame, targetHint}" vertex="1">
+          <mxGeometry height="100" width="220" x="540" y="-240" as="geometry" />
+        </mxCell>
+        <mxCell id="sender" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="Sender (1 goroutine)&#xa;TCP write only&#xa;READY connection only" vertex="1">
+          <mxGeometry height="80" width="220" x="840" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="reader" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="Reader (1 goroutine)&#xa;TCP read + framing + dispatch&#xa;dispatch by frameType: request/response" vertex="1">
+          <mxGeometry height="80" width="300" x="880" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="cmP" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeWidth=2;" value="ConnMgr-Primary&#xa;DISCONNECTED/CONNECTING/READY&#xa;HELLO/ACK handshake" vertex="1">
+          <mxGeometry height="110" width="220" x="300" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="cmS" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeWidth=2;" value="ConnMgr-Secondary&#xa;DISCONNECTED/CONNECTING/READY&#xa;HELLO/ACK handshake" vertex="1">
+          <mxGeometry height="110" width="220" x="840" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="selector" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeWidth=2;" value="Active Conn Selector&#xa;Primary READY → Secondary READY&#xa;Immediate failover on P down" vertex="1">
+          <mxGeometry height="90" width="220" x="50" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="inflightA" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="Inflight-A (RPC only)&#xa;NATS→TCP pending req&#xa;tid → {natsReply, payload, attempt, deadline, phase(P/S)}" vertex="1">
+          <mxGeometry height="110" width="420" x="800" y="-400" as="geometry" />
+        </mxCell>
+        <mxCell id="inflightB" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="Inflight-B (TCP inbound RPC ALWAYS)&#xa;TCP→NATS pending req&#xa;tid → {tcpReplyInfo, payload, deadline}&#xa;(always needs TCP response)" vertex="1">
+          <mxGeometry height="110" width="360" x="790" y="-210" as="geometry" />
+        </mxCell>
+        <mxCell id="semA" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6e6;strokeWidth=2;" value="Semaphore A (NATS→TCP)&#xa;maxConcurrent = 100 (example)" vertex="1">
+          <mxGeometry height="60" width="260" x="360" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="semB" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6e6;strokeWidth=2;" value="Semaphore B (TCP→NATS)&#xa;maxConcurrent = 100 (example)" vertex="1">
+          <mxGeometry height="60" width="260" x="650" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="subA" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="NATS Subscriber (A)&#xa;subject: externa_req" vertex="1">
+          <mxGeometry height="80" width="280" x="340" y="-670" as="geometry" />
+        </mxCell>
+        <mxCell id="ghA" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="Per-message Goroutine Handler (A) NATS→TCP&lt;br&gt;- Transform + tid 생성/추출&lt;br&gt;- if rpc: register inflight-A + wait resp + retry(3)/failover 후에 retry(3) + 최종적으로 timeout response&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="100" width="640" x="510" y="-565" as="geometry" />
+        </mxCell>
+        <mxCell id="pubA" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="NATS Reply Publisher (A)&#xa;msg.Reply (INBOX) or response subject&#xa;timeout/error (rpc only)" vertex="1">
+          <mxGeometry height="60" width="350" x="400" y="-370" as="geometry" />
+        </mxCell>
+        <mxCell id="dispatchB" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="TCP inbound dispatcher&#xa;spawn goroutine per REQUEST frame" vertex="1">
+          <mxGeometry height="80" width="260" x="60" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="ghB" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="Per-message Goroutine Handler (B) TCP→NATS (RPC only)&#xa;- Transform + tid 추출/생성&#xa;- register inflight-B (ALWAYS)&#xa;- NATS Request(inbox) wait resp&#xa;- resp → sendQ enqueue (TCP response)" vertex="1">
+          <mxGeometry height="120" width="420" x="1250" y="-60" as="geometry" />
+        </mxCell>
+        <mxCell id="natsReqB" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeWidth=2;" value="NATS Requester (B)&#xa;subject: internal_req&#xa;always wait response" vertex="1">
+          <mxGeometry height="70" width="220" x="1290" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="C1" edge="1" parent="1" source="sendq" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#000000;" target="sender" value="dequeue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="G1" edge="1" parent="1" source="selector" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#777777;dashed=1;" target="sender" value="select READY conn">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="G2" edge="1" parent="1" source="cmP" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#777777;dashed=1;" target="selector" value="Primary status">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="G3" edge="1" parent="1" source="cmS" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#777777;dashed=1;" target="selector" value="Secondary status">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="W1" edge="1" parent="1" source="sender" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="cmP" value="write P">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="W2" edge="1" parent="1" source="sender" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;dashed=1;" target="cmS" value="write S (failover)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="X1" edge="1" parent="1" source="cmP" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="ext" value="TCP(net0)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="X2" edge="1" parent="1" source="cmS" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;dashed=1;" target="ext" value="TCP(net0)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="R0" edge="1" parent="1" source="ext" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#000000;" target="reader" value="frames: request/response">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="R1" edge="1" parent="1" source="reader" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="inflightA" value="dispatch RESPONSE&#xa;match tid (A)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="R2" edge="1" parent="1" source="reader" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#f29900;" target="dispatchB" value="dispatch REQUEST&#xa;spawn goroutine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="A1" edge="1" parent="1" source="nats" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="subA" value="eth0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="A2" edge="1" parent="1" source="subA" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="ghA" value="spawn goroutine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="A3" edge="1" parent="1" source="subA" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#777777;dashed=1;" target="semA" value="acquire/release">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="A4" edge="1" parent="1" source="ghA" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="inflightA" value="register (rpc only)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="A5" edge="1" parent="1" source="ghA" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="sendq" value="enqueue (rpc/oneway)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="A6" edge="1" parent="1" source="ghA" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="pubA" value="reply/timeout (rpc only)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="A7" edge="1" parent="1" source="pubA" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#1a73e8;" target="nats" value="eth0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="B0" edge="1" parent="1" source="dispatchB" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#777777;dashed=1;" target="semB" value="acquire/release">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="B1" edge="1" parent="1" source="dispatchB" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#f29900;" target="ghB" value="spawn goroutine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="B2" edge="1" parent="1" source="ghB" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#f29900;" target="inflightB" value="register (ALWAYS)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="B3" edge="1" parent="1" source="ghB" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#f29900;" target="natsReqB" value="NATS request(inbox)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="B4" edge="1" parent="1" source="natsReqB" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#f29900;" target="nats" value="eth0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="B5" edge="1" parent="1" source="nats" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#f29900;" target="natsReqB" value="resp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="B6" edge="1" parent="1" source="natsReqB" style="endArrow=block;html=1;strokeWidth=2;strokeColor=#f29900;" target="sendq" value="enqueue TCP response">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="H1" edge="1" parent="1" source="cmP" style="endArrow=block;html=1;strokeWidth=2;dashed=1;strokeColor=#777777;" target="ext" value="HELLO/ACK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="H2" edge="1" parent="1" source="cmS" style="endArrow=block;html=1;strokeWidth=2;dashed=1;strokeColor=#777777;" target="ext" value="HELLO/ACK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

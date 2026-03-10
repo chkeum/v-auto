@@ -1,0 +1,307 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"tcp-bridge/internal/config"
+	"tcp-bridge/internal/connection"
+	"tcp-bridge/internal/inflight"
+	"tcp-bridge/internal/metrics"
+	"tcp-bridge/internal/nats"
+	"tcp-bridge/internal/tcp"
+	"tcp-bridge/internal/worker"
+)
+
+// App은 TCP Bridge 메인 애플리케이션을 나타냅니다.
+//
+// 아키텍처:
+// 1. ConnectionManager: 우선순위 기반 다중 TCP 연결 관리 (conn_0 → conn_1 → conn_2 ...)
+// 2. NATS Client: Queue Group 기반 메시지 수신/전송 (Manual Ack)
+// 3. TCP Sender/Reader: 프레임 기반 통신 (Type + Length + TID + Payload)
+// 4. MessageHandler: NATS↔TCP 방향 메시지 처리
+// 5. InflightManager: 요청-응답 매칭 (TID 기반)
+// 6. Metrics: Prometheus 메트릭 수집 및 노출
+//
+// 라이프사이클:
+// Start: metrics → NATS → inflight → connection → TCP reader → message handler
+// Stop: message handler → TCP reader → connection → inflight → NATS → metrics
+//
+// 종료 처리: SIGINT/SIGTERM 시그널을 받아 Graceful Shutdown 수행
+type App struct {
+	config *config.Config
+	logger *slog.Logger
+	
+	// Core components
+	connMgr     *connection.ConnectionManager  // 우선순위 기반 TCP 연결 관리
+	natsClient  *nats.Client                  // NATS Queue Group 클라이언트
+	inflightMgr *inflight.InflightManager     // 요청-응답 매칭 관리
+	
+	// TCP components
+	tcpSender *tcp.Sender                     // TCP 프레임 전송 (큐 없이 직접 전송)
+	tcpReader *tcp.Reader                     // TCP 프레임 수신 (콜백 기반)
+	
+	// Message Handlers
+	natsHandler *worker.NATSInboundHandler  // NATS 메시지 핸들러
+	tcpHandler  *worker.TCPInboundHandler   // TCP 프레임 핸들러
+
+	// Metrics
+	metrics *metrics.Metrics                   // Prometheus 메트릭
+}
+
+func main() {
+	// Parse command line arguments
+	configPath := "config.yaml"
+	if len(os.Args) > 1 {
+		configPath = os.Args[1]
+	}
+	
+	// Load configuration
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+	
+	// Setup logger
+	logger := setupLogger(cfg.Logging)
+	
+	// Create application
+	app := NewApp(cfg, logger)
+	
+	// Setup signal handling
+	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	
+	// Start application
+	if err := app.Start(ctx); err != nil {
+		logger.Error("failed to start application", "error", err)
+		cancel()
+		os.Exit(1)
+	}
+	
+	logger.Info("tcp-bridge started successfully")
+	
+	// Wait for shutdown signal
+	<-sigChan
+	logger.Info("received shutdown signal")
+	
+	// Graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	defer shutdownCancel()
+	
+	if err := app.Stop(shutdownCtx); err != nil {
+		logger.Error("error during shutdown", "error", err)
+	} else {
+		logger.Info("tcp-bridge stopped successfully")
+	}
+	
+	cancel()
+}
+
+// NewApp creates a new application instance
+func NewApp(cfg *config.Config, logger *slog.Logger) *App {
+	app := &App{
+		config: cfg,
+		logger: logger,
+	}
+	
+	// Initialize components
+	app.initializeComponents()
+	
+	return app
+}
+
+// initializeComponents는 모든 애플리케이션 컴포넨트를 초기화합니다.
+//
+// 초기화 순서:
+// 1. Metrics: Prometheus HTTP 서버 준비
+// 2. ConnectionManager: 우선순위 기반 TCP 연결 관리자 생성
+// 3. NATS Client: Queue Group 클라이언트 생성
+// 4. InflightManager: Inflight-A/B 관리자 생성
+// 5. TCP Sender/Reader: 프레임 송수신 컴포넨트 생성
+// 6. NATSInboundHandler: NATS 메시지 핸들러 생성
+// 7. TCPInboundHandler: TCP 프레임 핸들러 생성
+// 8. Callback 등록: TCP Reader에 REQUEST/RESPONSE 프레임 콜백 설정
+//
+// 주의: 실제 start는 Start() 함수에서 수행되므로 여기서는 객체 생성만 합니다.
+func (a *App) initializeComponents() {
+	// Create metrics
+	a.metrics = metrics.NewMetrics(a.logger.With("component", "metrics"), &a.config.Metrics)
+	
+	// Create connection manager
+	a.connMgr = connection.NewConnectionManager(a.logger.With("component", "connection-mgr"), &a.config.TCP)
+	
+	// Set connection state change callback for metrics
+	a.connMgr.SetStateChangeCallback(func(connType string, state string) {
+		a.metrics.SetConnectionState(connType, state)
+	})
+	
+	// Create NATS client
+	a.natsClient = nats.NewClient(a.logger.With("component", "nats"), &a.config.NATS)
+	
+	// Create inflight manager
+	a.inflightMgr = inflight.NewInflightManager(a.logger.With("component", "inflight"))
+	
+	// Create TCP sender and reader
+	a.tcpSender = tcp.NewSender(a.logger.With("component", "tcp-sender"), &a.config.TCP, a.connMgr)
+	a.tcpReader = tcp.NewReader(a.logger.With("component", "tcp-reader"), &a.config.TCP, a.connMgr)
+	
+	// Create NATS inbound handler
+	a.natsHandler = worker.NewNATSInboundHandler(
+		a.logger.With("component", "nats-handler"),
+		&a.config.MessageHandler.Internal,  // Use internal config for timeouts
+		&a.config.NATS,
+		a.natsClient,
+		a.tcpSender,
+		a.inflightMgr,
+		a.connMgr, // Priority 기반 재시도용
+	)
+	
+	// Create TCP inbound handler
+	a.tcpHandler = worker.NewTCPInboundHandler(
+		a.logger.With("component", "tcp-handler"),
+		a.natsHandler,
+	)
+	
+	// Set up TCP reader callbacks
+	a.tcpReader.SetRequestFrameCallback(a.handleTCPRequest)
+	a.tcpReader.SetResponseFrameCallback(a.handleTCPResponse)
+}
+
+// Start starts all application components
+func (a *App) Start(ctx context.Context) error {
+	a.logger.Info("starting tcp-bridge application", "version", a.config.Server.Version)
+	
+	// Start metrics server
+	if err := a.metrics.Start(); err != nil {
+		return fmt.Errorf("failed to start metrics: %w", err)
+	}
+	
+	// Connect to NATS
+	if err := a.natsClient.Connect(); err != nil {
+		return fmt.Errorf("failed to connect to NATS: %w", err)
+	}
+	
+	// Start inflight manager
+	if err := a.inflightMgr.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start inflight manager: %w", err)
+	}
+	
+	// Start connection manager
+	if err := a.connMgr.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start connection manager: %w", err)
+	}
+	
+	// Start TCP reader
+	if err := a.tcpReader.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start TCP reader: %w", err)
+	}
+	
+	// Start NATS inbound handler
+	if err := a.natsHandler.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start NATS inbound handler: %w", err)
+	}
+	
+	// Start metrics collection goroutine
+	go a.collectMetrics()
+	
+	return nil
+}
+
+// Stop gracefully stops all application components
+func (a *App) Stop(ctx context.Context) error {
+	a.logger.Info("stopping tcp-bridge application")
+	
+	// Stop NATS inbound handler to stop processing new requests
+	a.natsHandler.Stop()
+	
+	// Stop TCP components
+	a.tcpReader.Stop()
+	
+	// Stop connection manager
+	a.connMgr.Stop()
+	
+	// Stop inflight manager
+	a.inflightMgr.Stop()
+	
+	// Disconnect from NATS
+	a.natsClient.Disconnect()
+	
+	// Stop metrics server
+	if err := a.metrics.Stop(); err != nil {
+		a.logger.Error("error stopping metrics server", "error", err)
+	}
+	
+	return nil
+}
+
+// handleTCPRequest handles incoming TCP request frames
+func (a *App) handleTCPRequest(frame *config.Frame) {
+	a.logger.Debug("handling TCP request", "tid", frame.TID)
+	
+	// Update metrics
+	a.metrics.IncTCPFramesReceived("request")
+	
+	// Dispatch to NATS handler via TCP handler
+	a.tcpHandler.DispatchRequestFrame(frame)
+}
+
+// handleTCPResponse handles incoming TCP response frames
+func (a *App) handleTCPResponse(frame *config.Frame) {
+	a.logger.Debug("handling TCP response", "tid", frame.TID)
+	
+	// Update metrics
+	a.metrics.IncTCPFramesReceived("response")
+	
+	// Match with inflight-A entries (NATS→TCP responses)
+	if handled := a.inflightMgr.GetInflightA().HandleResponse(frame); !handled {
+		a.logger.Warn("no inflight-A entry found for TCP response", "tid", frame.TID)
+	}
+}
+
+// collectMetrics periodically collects and updates metrics
+func (a *App) collectMetrics() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		// Other metrics can be added here as needed
+	}
+}
+
+// setupLogger creates a structured logger
+func setupLogger(cfg config.LoggingConfig) *slog.Logger {
+	var level slog.Level
+	switch cfg.Level {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+	
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+	
+	var handler slog.Handler
+	if cfg.Format == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+	
+	return slog.New(handler)
+}
